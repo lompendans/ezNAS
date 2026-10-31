@@ -12,7 +12,7 @@ ezNAS is a lightweight file server with a browser-based file manager. It is desi
 - Windows and Linux builds (amd64 and arm64).
 - Browse folders, upload and download files, create folders, rename and delete items.
 - Search file and folder names.
-- Optional password gate with random salt and repeated SHA-256 hashing; use a strong unique password.
+- Mandatory password gate: first run generates a one-time high-entropy password; users can set their own with `eznas password set`.
 - Configurable host, port and storage directory through a JSON config.
 - Upload limit of 10 GiB per file.
 - Path traversal checks and safeguards against symlinks escaping the storage directory.
@@ -68,7 +68,7 @@ eznas version     Show version
 eznas help        Show commands
 ```
 
-The password command currently uses a basic terminal prompt with visible input; do not run it where others can see the terminal. Restart the server after changing the password. Password protection is disabled by default for initial local testing.
+Password protection is always enabled. On the first run, ezNAS generates a strong random password and prints it once in the terminal; save it before closing the terminal. To set or change the password, stop ezNAS and run `eznas password set`, then restart the server. The current password prompt displays typed characters, so do this where others cannot see your terminal.
 
 ## Configuration
 
@@ -92,12 +92,16 @@ Use an absolute storage path for a durable installation. The default storage dir
 
 ## Security notes
 
-- Password protection is optional and disabled by default. Set a password before allowing access from other people or networks.
+- Password protection is mandatory and enabled on first run. Keep the generated password private and change it to a strong unique password if desired.
 - The current HTTP server does not provide TLS. Keep it on a trusted LAN or put it behind a properly configured HTTPS reverse proxy. Do not port-forward it directly to the internet.
 - Password sessions are in-memory and expire after 12 hours; restarting the server invalidates sessions.
 - Deleting files is permanent. There is no recycle bin or backup system yet.
 - Keep independent backups of important data.
 - Review this project's security posture before using it for sensitive data.
+
+## Windows Network and native file sharing
+
+The current release serves the web file manager over HTTP. It does not yet publish a native SMB share or guarantee that ezNAS appears in File Explorer's Network view. Those are separate features: Windows-compatible discovery is needed for visibility, and SMB needs its own access-control design so native file sharing cannot bypass ezNAS's password. Do not manually share the storage directory through Windows or Samba unless you have separately configured and secured those share permissions.
 
 ## Development
 
