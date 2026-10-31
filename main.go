@@ -520,6 +520,7 @@ func renamePath(w http.ResponseWriter,r *http.Request) {
 	name:=strings.TrimSpace(in.Name);if name==""||name=="."||name==".."||strings.ContainsAny(name,"/\\") {writeJSON(w,400,map[string]string{"error":"invalid name"});return}
 	dst,err:=safePath(filepath.ToSlash(filepath.Join(filepath.Dir(in.Path),name)));if err!=nil{writeJSON(w,400,map[string]string{"error":err.Error()});return}
 	if _,err=os.Lstat(dst);err==nil{writeJSON(w,409,map[string]string{"error":"destination already exists"});return}
+	if err=revokeSharesForPath(filepath.ToSlash(filepath.Clean(in.Path)));err!=nil{writeJSON(w,500,map[string]string{"error":"cannot revoke share links before rename"});return}
 	if err=os.Rename(src,dst);err!=nil{writeJSON(w,400,map[string]string{"error":err.Error()});return};writeJSON(w,200,map[string]bool{"ok":true})
 }
 func deletePath(w http.ResponseWriter,r *http.Request) {
@@ -569,6 +570,7 @@ func moveToTrash(p, root string) error {
 	rel,err:=filepath.Rel(root,p); if err!=nil || rel=="." || strings.HasPrefix(rel,".."+string(filepath.Separator)) { return errors.New("invalid recycle-bin path") }
 	dir:=trashDir(); if err=os.MkdirAll(dir,0700); err!=nil{return err}
 	fi,err:=os.Lstat(p); if err!=nil{return err}; if fi.Mode()&os.ModeSymlink!=0{return errors.New("symbolic links cannot be moved to recycle bin")}
+	if err = revokeSharesForPath(filepath.ToSlash(rel)); err != nil { return fmt.Errorf("cannot revoke shares for deleted item: %w", err) }
 	id:=fmt.Sprintf("%d-%s",time.Now().UnixNano(),filepath.Base(p))
 	dst:=filepath.Join(dir,id)
 	if err=os.Rename(p,dst);err!=nil{return err}
