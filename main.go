@@ -614,7 +614,7 @@ func trustTLSCertificate() {
 	if !bytes.Equal(leaf.RawSubject, leaf.RawIssuer) {
 		logger.Fatal("refusing to add a CA-issued server certificate as a trusted root; use a self-signed certificate created by 'eznas tls generate'")
 	}
-	if err := leaf.CheckSignatureFrom(leaf); err != nil {
+	if err := leaf.CheckSignature(leaf.SignatureAlgorithm, leaf.RawTBSCertificate, leaf.Signature); err != nil {
 		logger.Fatal("refusing to trust certificate: it is not validly self-signed")
 	}
 	// Trust is scoped to the current Windows user; no administrator elevation is needed.
