@@ -21,3 +21,7 @@ main{padding-top:44px}header{align-items:flex-start;margin-bottom:36px}header h1
 .update-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 20px;margin:0 0 20px;border:1px solid rgba(129,140,248,.38);border-radius:15px;background:linear-gradient(115deg,rgba(49,46,129,.34),rgba(18,26,43,.9));box-shadow:0 12px 36px rgba(0,0,0,.14)}
 .update-banner strong{display:block;color:#eef2ff;font-size:14px}.update-banner p{margin:6px 0 0;color:#aebbd1;font-size:12px;line-height:1.5}.update-actions{display:flex;align-items:center;gap:9px;flex-shrink:0}.update-actions a{text-decoration:none;font-size:12px;font-weight:650}.update-actions button{font-size:12px}
 @media(max-width:700px){.update-banner{align-items:stretch;flex-direction:column}.update-actions{flex-wrap:wrap}.update-actions>*{flex:1;text-align:center}}
+
+.auto-update-option{display:inline-flex;align-items:center;gap:6px;color:#aebbd1;font-size:11px;white-space:nowrap}.auto-update-option input{accent-color:#818cf8}
+.update-actions button:disabled{opacity:.65;cursor:wait}
+@media(max-width:700px){.auto-update-option{justify-content:center;padding:8px}}
