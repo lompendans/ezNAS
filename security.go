@@ -69,25 +69,11 @@ func loginAttemptAllowed(remoteAddr string) (bool, time.Duration) {
 		}
 		return false, retry
 	}
-	return true, 0
-}
-
-func recordLoginFailure(remoteAddr string) {
-	ip := clientIP(remoteAddr)
-	if ip == "" {
-		return
-	}
-	now := time.Now()
-	loginLimitMu.Lock()
-	defer loginLimitMu.Unlock()
-
-	bucket, ok := loginBuckets[ip]
-	if !ok || now.Sub(bucket.started) >= loginFailureWindow {
-		loginBuckets[ip] = loginBucket{started: now, failures: 1}
-		return
-	}
+	// Reserve the attempt while holding the mutex so parallel requests cannot
+	// bypass the limit before password hashing finishes.
 	bucket.failures++
 	loginBuckets[ip] = bucket
+	return true, 0
 }
 
 func clearLoginFailures(remoteAddr string) {
