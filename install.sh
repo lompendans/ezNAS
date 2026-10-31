@@ -35,6 +35,51 @@ curl -fL "$BASE/checksums.txt" -o "$TMP/checksums.txt"
 mkdir -p "$TMP/unpack" "$INSTALL_DIR"
 tar -xzf "$TMP/$ASSET" -C "$TMP/unpack"
 install -m 0755 "$TMP/unpack/eznas" "$INSTALL_DIR/eznas"
+
+# Persist PATH for future login shells without adding duplicate lines.
+PROFILE="$HOME/.profile"
+PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
+touch "$PROFILE"
+if ! grep -Fq "# ezNAS PATH" "$PROFILE"; then
+  {
+    printf '\n# ezNAS PATH\n'
+    printf '%s\n' "$PATH_LINE"
+  } >> "$PROFILE"
+fi
+case ":$PATH:" in *":$INSTALL_DIR:"*) ;; *) export PATH="$INSTALL_DIR:$PATH" ;; esac
+
 echo "ezNAS $TAG installed to $INSTALL_DIR/eznas"
-case ":$PATH:" in *":$INSTALL_DIR:"*) ;; *) echo "Add this to your shell profile if needed: export PATH=\"$INSTALL_DIR:\$PATH\"" ;; esac
-echo "Run: eznas"
+echo "PATH configured in $PROFILE. Open a new login shell (or run: . ~/.profile)."
+echo "Run: eznas help"
+
+if command -v systemctl >/dev/null 2>&1 && [ -d "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" ]; then
+  printf '\n'
+  printf 'Enable ezNAS to start automatically when your user session starts? [y/N] '
+  IFS= read -r ANSWER || ANSWER=n
+  case "$ANSWER" in
+    y|Y|yes|YES)
+      UNIT_DIR="$HOME/.config/systemd/user"
+      mkdir -p "$UNIT_DIR"
+      cat > "$UNIT_DIR/eznas.service" <<EOF
+[Unit]
+Description=ezNAS personal file server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$HOME
+ExecStart=$INSTALL_DIR/eznas start
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+EOF
+      systemctl --user daemon-reload
+      systemctl --user enable --now eznas.service
+      echo "Automatic startup enabled. Check status with: systemctl --user status eznas"
+      ;;
+    *) echo "Automatic startup skipped. Enable later with a user systemd service if desired." ;;
+  esac
+fi
