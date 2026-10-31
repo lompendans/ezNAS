@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestCleanRelative(t *testing.T) {
 	tests := []struct {
@@ -24,6 +27,7 @@ func TestCleanRelative(t *testing.T) {
 			continue
 		}
 		if err != nil { t.Errorf("cleanRelative(%q) unexpected error: %v", tt.input, err); continue }
-		if got != tt.want { t.Errorf("cleanRelative(%q) = %q, want %q", tt.input, got, tt.want) }
+		want := filepath.FromSlash(tt.want)
+		if got != want { t.Errorf("cleanRelative(%q) = %q, want %q", tt.input, got, want) }
 	}
 }
