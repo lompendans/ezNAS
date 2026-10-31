@@ -78,13 +78,13 @@ The web interface checks GitHub for the latest stable release on startup and per
 
 You can also run:
 
-\`\`\`sh
+```sh
 eznas update
-\`\`\`
+```
 
-This downloads the matching Windows or Linux release archive and \`checksums.txt\`, verifies the archive's SHA-256 hash, extracts the expected executable, and stages it under the ezNAS user configuration directory at \`updates/<release-tag>/\`. A separate platform helper waits for the updater process to exit, stops a running server, backs up the current executable, installs the verified binary, and attempts to restart ezNAS. If the new version fails to launch, the helper restores the previous executable. The backup is retained as \`<executable>.eznas-backup\` for manual recovery.
+This downloads the matching Windows or Linux release archive and `checksums.txt`, verifies the archive's SHA-256 hash, extracts the expected executable, and stages it under the ezNAS user configuration directory at `updates/<release-tag>/`. A separate platform helper waits for the updater process to exit, stops a running server, backs up the current executable, installs the verified binary, and attempts to restart ezNAS. If the new version fails to launch, the helper restores the previous executable. The backup is retained as `<executable>.eznas-backup` for manual recovery.
 
-The web UI's **Install update** button runs the same workflow. The **Install automatically** checkbox is an opt-in preference stored in that browser; when enabled, ezNAS applies a detected stable update during a subsequent update check. Updates may briefly interrupt connections. Configuration and storage directories are not modified by the updater. Linux systemd user installations are restarted through systemd when the \`eznas.service\` unit exists.
+The web UI's **Install update** button runs the same workflow. The **Install automatically** checkbox is an opt-in preference stored in that browser; when enabled, ezNAS applies a detected stable update during a subsequent update check. Updates may briefly interrupt connections. Configuration and storage directories are not modified by the updater. Linux systemd user installations are restarted through systemd when the `eznas.service` unit exists.
 
 Automatic updating is supported for Windows and Linux on amd64 and arm64. Review release notes and keep backups of important files regardless of updater safeguards.
 
