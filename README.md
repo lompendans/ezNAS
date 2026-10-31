@@ -104,7 +104,7 @@ Alternatively, put ezNAS behind a properly configured HTTPS reverse proxy such a
 ```text
 eznas             Start the server in the foreground
 eznas start       Start the server in the foreground
-eznas status      Check the local HTTP endpoint
+eznas status      Check the local server endpoint
 eznas storage     Show the storage path and available capacity where supported
 eznas config      Show safe configuration details
 eznas password set Enable or change password protection
@@ -117,7 +117,7 @@ Password protection is always enabled. On the first run, ezNAS generates a stron
 
 ## Sharing files with family and friends
 
-Select **Share** beside a file in the web file manager and choose an expiry of 24 hours, 7 days, or 30 days. ezNAS generates a cryptographically random, unguessable link. The link allows a download of that single file only; it does not grant access to the file manager, other folders, uploads, or backups. The raw link is shown only once at creation time, so copy it then. Open **Shared links** to see active links and revoke any of them immediately. Expired links are rejected automatically.
+Select **Share** beside a file in the web file manager and choose an expiry of 24 hours, 7 days, or 30 days. ezNAS generates a cryptographically random, unguessable link. The link uses the browser address you opened ezNAS with: when sharing with another device, open ezNAS using the NAS device’s LAN IP address or hostname, not `localhost`. The share dialog warns about localhost links. The link allows a download of that single file only; it does not grant access to the file manager, other folders, uploads, or backups. The raw link is shown only once at creation time, so copy it then. Open **Shared links** to see active links and revoke any of them immediately. Expired links are rejected automatically.
 
 Share records are stored in `shares.json` beside the ezNAS configuration, with only a SHA-256 digest of each secret token. If a shared file is deleted, moved, replaced, or modified, its old link stops working. Folder sharing and separate family-member accounts/permissions are not included in this first sharing release.
 
@@ -163,7 +163,7 @@ Use an absolute storage path for a durable installation. The default storage dir
 
 - Password protection is mandatory and enabled on first run. Keep the generated password private and change it to a strong unique password if desired.
 - If TLS is not configured, the server uses HTTP. Keep it on a trusted LAN or put it behind a properly configured HTTPS reverse proxy. Do not port-forward an HTTP-only instance directly to the internet.
-- Password sessions are in-memory and expire after 12 hours; restarting the server invalidates sessions. Failed logins are rate-limited per client IP, and browser write requests are checked for same-origin requests.
+- Password sessions are in-memory and expire after 12 hours; restarting the server invalidates sessions. Login attempts are limited to five per client IP in a 15-minute window, and browser write requests are checked for same-origin scheme and host.
 - A single ezNAS administrator password protects the web file manager. Share links are separate, high-entropy bearer links that are read-only, expire within 30 days, and can be revoked. Anyone who obtains a link can download that one file until it expires or is revoked; share links are not a substitute for private account permissions.
 - The recycle bin is recoverable but lives on the same storage device. Backups are also local by default; copy them to another physical device for disaster recovery.
 - ezNAS limits simultaneous uploads and backups to reduce resource contention on older hardware. Very large uploads and backups still require sufficient free disk space.
