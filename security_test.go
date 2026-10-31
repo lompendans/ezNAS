@@ -33,6 +33,7 @@ func TestOriginAllowed(t *testing.T) {
 		want   bool
 	}{
 		{name: "same origin", origin: "https://nas.example:8443", want: true},
+		{name: "different scheme", origin: "http://nas.example:8443", want: false},
 		{name: "different origin", origin: "https://attacker.example", want: false},
 		{name: "cross-site fetch metadata", site: "cross-site", want: false},
 		{name: "no origin for trusted API client", want: true},
