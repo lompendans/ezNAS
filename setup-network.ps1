@@ -47,7 +47,7 @@ if ($portInput) {
 }
 $config.storage = $storagePath
 $config.host = "0.0.0.0"
-$config | ConvertTo-Json -Depth 4 | Set-Content -Path $configPath -Encoding UTF8
+[System.IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
 Write-Host "Saved configuration: $configPath"
 foreach ($serviceName in @("FDResPub", "fdPHost")) {
     $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
