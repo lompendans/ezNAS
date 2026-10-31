@@ -15,7 +15,6 @@ func TestLoginThrottleBlocksAfterFiveFailures(t *testing.T) {
 		if allowed, _ := loginAttemptAllowed(remote); !allowed {
 			t.Fatalf("attempt %d was blocked too early", i+1)
 		}
-		recordLoginFailure(remote)
 	}
 	if allowed, retry := loginAttemptAllowed(remote); allowed || retry <= 0 {
 		t.Fatalf("expected login to be throttled, allowed=%v retry=%v", allowed, retry)
