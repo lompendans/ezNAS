@@ -18,6 +18,7 @@ ezNAS is a lightweight file server with a browser-based file manager. It is desi
 - Path traversal checks and safeguards against symlinks escaping the storage directory.
 - Linux storage-capacity display.
 - One-command installers that download published releases and verify SHA-256 checksums.
+- Windows installer adds ezNAS to the current user's PATH and can optionally start it automatically at sign-in.
 
 ## Install
 
@@ -35,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/lompendans/ezNAS/main/install.sh | 
 irm https://raw.githubusercontent.com/lompendans/ezNAS/main/install.ps1 | iex
 ```
 
-For security-conscious installations, inspect the installer script before executing it. The installer verifies the downloaded release asset against the published SHA-256 checksum file.
+For security-conscious installations, inspect the installer script before executing it. The installer verifies the downloaded release asset against the published SHA-256 checksum file. On Windows, it adds the install directory to your user PATH and offers optional automatic startup at sign-in. Open a new terminal after installation so the updated PATH is picked up.
 
 ## Run from source
 
@@ -115,9 +116,9 @@ The script uses Windows' built-in SMB server, creates the `ezNAS` share for the 
 - Set your LAN network profile to **Private** and enable Network discovery in Windows Settings if needed. Do not enable SMB access on Public networks or forward TCP 445 from the internet.
 - This setup script requires Windows editions with SMB server cmdlets and Administrator rights. It has not yet been tested on every Windows edition.
 
-The current HTTP server does not itself publish a native SMB share; the setup script configures Windows' native SMB service for this. On Linux, native SMB sharing still needs a Samba-specific setup path.
+The current HTTP server does not itself publish a native SMB share; the setup script configures Windows' native SMB service for this. On Linux, use Samba for native SMB sharing; the installer does not automatically change Samba configuration.
 
-The current release serves the web file manager over HTTP. It does not yet publish a native SMB share or guarantee that ezNAS appears in File Explorer's Network view. Those are separate features: Windows-compatible discovery is needed for visibility, and SMB needs its own access-control design so native file sharing cannot bypass ezNAS's password. Do not manually share the storage directory through Windows or Samba unless you have separately configured and secured those share permissions.
+The web file manager and SMB share both operate on the configured storage directory when Windows setup has completed successfully, so changes made through either interface should be visible through the other. SMB permissions are managed separately from the ezNAS web password. Only grant SMB access to trusted Windows accounts; a user with SMB access can read and modify shared files without logging into the web interface.
 
 ## Development
 
