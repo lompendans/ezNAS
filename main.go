@@ -254,8 +254,16 @@ func stopServer() {
 	fmt.Printf("Stop signal sent to ezNAS (PID %d).\n", pid)
 }
 func checkStatus() {
-	url := "http://127.0.0.1:" + strconv.Itoa(cfg.Port) + "/api/status"
-	client := http.Client{Timeout: 2*time.Second}
+	scheme := "http"
+	transport := &http.Transport{}
+	if cfg.TLSCert != "" && cfg.TLSKey != "" {
+		scheme = "https"
+		// This is a loopback-only availability probe. It intentionally does not
+		// validate the local self-signed certificate or use the connection for data.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	url := scheme + "://127.0.0.1:" + strconv.Itoa(cfg.Port) + "/api/status"
+	client := http.Client{Timeout: 2*time.Second, Transport: transport}
 	r, err := client.Get(url); if err != nil { fmt.Println("ezNAS is not responding at " + url); os.Exit(1) }
 	defer r.Body.Close()
 	fmt.Printf("ezNAS is responding: %s\n", url)
@@ -475,6 +483,7 @@ func uploadFile(w http.ResponseWriter,r *http.Request) {
 	}
 	r.Body=http.MaxBytesReader(w,r.Body,maxUploadBytes+(1<<20))
 	if err:=r.ParseMultipartForm(32<<20);err!=nil { writeJSON(w,400,map[string]string{"error":"upload too large or invalid multipart form"});return }
+	if r.MultipartForm != nil { defer r.MultipartForm.RemoveAll() }
 	dir,err:=safePath(r.FormValue("path"));if err!=nil{writeJSON(w,400,map[string]string{"error":err.Error()});return}
 	f,h,err:=r.FormFile("file");if err!=nil{writeJSON(w,400,map[string]string{"error":"missing file"});return};defer f.Close()
 	name:=filepath.Base(strings.ReplaceAll(h.Filename,"\\","/"));if name=="."||name=="/"||name==""||strings.ContainsRune(name,0){writeJSON(w,400,map[string]string{"error":"invalid filename"});return}
