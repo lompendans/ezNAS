@@ -108,3 +108,5 @@ async function loadShares(){
     table.append(body);box.append(table);
   }catch(e){notice(e.message,true);}
 }
+
+$("refresh-shares").addEventListener("click",loadShares);
