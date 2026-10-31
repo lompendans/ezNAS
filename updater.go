@@ -150,6 +150,7 @@ func extractWindowsBinary(path, dest string) error {
 	defer z.Close()
 	for _, f := range z.File {
 		if f.Name != "eznas.exe" { continue }
+		if f.UncompressedSize64 == 0 || f.UncompressedSize64 > 128<<20 { return errors.New("Windows executable has an invalid size") }
 		rc, err := f.Open()
 		if err != nil { return err }
 		out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0700)
