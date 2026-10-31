@@ -22,10 +22,14 @@ try {
     if ($serverPid -gt 0 -and $serverPid -ne $PID) {
       $p = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
       if ($p) {
-        Stop-Process -Id $serverPid -Force
+        # Ask ezNAS to shut down through its own stop command first.
+        try { & $Target stop | Out-Null } catch {}
         for ($i=0; $i -lt 40; $i++) {
           if (-not (Get-Process -Id $serverPid -ErrorAction SilentlyContinue)) { break }
           Start-Sleep -Milliseconds 250
+        }
+        if (Get-Process -Id $serverPid -ErrorAction SilentlyContinue) {
+          throw 'ezNAS did not stop gracefully. No executable was replaced; close the server and retry.'
         }
       }
     }
