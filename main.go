@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/rsa"
 	"crypto/x509/pkix"
+	"math/big"
 	"archive/zip"
 	"encoding/pem"
 	"context"
@@ -464,3 +465,101 @@ func storageInfo(w http.ResponseWriter) {
 }
 func writeJSON(w http.ResponseWriter,status int,v any){w.Header().Set("Content-Type","application/json; charset=utf-8");w.WriteHeader(status);_ = json.NewEncoder(w).Encode(v)}
 func methodNotAllowed(w http.ResponseWriter){writeJSON(w,http.StatusMethodNotAllowed,map[string]string{"error":"method not allowed"})}
+
+
+type TrashEntry struct {
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Directory bool `json:"directory"`
+	Size int64 `json:"size"`
+	Deleted time.Time `json:"deleted"`
+}
+type trashMetadata struct { Original string `json:"original"`; Name string `json:"name"`; Deleted time.Time `json:"deleted"` }
+func trashDir() string { cfgMu.RLock(); root:=cfg.Storage; cfgMu.RUnlock(); return filepath.Join(root,".eznas-trash") }
+func moveToTrash(p, root string) error {
+	rel,err:=filepath.Rel(root,p); if err!=nil || rel=="." || strings.HasPrefix(rel,".."+string(filepath.Separator)) { return errors.New("invalid recycle-bin path") }
+	dir:=trashDir(); if err=os.MkdirAll(dir,0700); err!=nil{return err}
+	fi,err:=os.Lstat(p); if err!=nil{return err}; if fi.Mode()&os.ModeSymlink!=0{return errors.New("symbolic links cannot be moved to recycle bin")}
+	id:=fmt.Sprintf("%d-%s",time.Now().UnixNano(),filepath.Base(p))
+	dst:=filepath.Join(dir,id)
+	if err=os.Rename(p,dst);err!=nil{return err}
+	meta:=trashMetadata{Original:filepath.ToSlash(rel),Name:filepath.Base(p),Deleted:time.Now()}
+	b,err:=json.Marshal(meta);if err!=nil{_ = os.Rename(dst,p);return err}
+	if err=os.WriteFile(dst+".json",b,0600);err!=nil{_ = os.Rename(dst,p);return err}
+	return nil
+}
+func listTrash(w http.ResponseWriter,r *http.Request) {
+	dir:=trashDir(); entries,err:=os.ReadDir(dir);if os.IsNotExist(err){writeJSON(w,200,map[string]any{"items":[]TrashEntry{}});return};if err!=nil{writeJSON(w,500,map[string]string{"error":"cannot read recycle bin"});return}
+	out:=[]TrashEntry{}
+	for _,e:=range entries { if e.IsDir() || strings.HasSuffix(e.Name(),".json"){continue}; b,er:=os.ReadFile(filepath.Join(dir,e.Name())+".json");if er!=nil{continue};var m trashMetadata;if json.Unmarshal(b,&m)!=nil{continue};fi,er:=e.Info();if er!=nil{continue};out=append(out,TrashEntry{ID:e.Name(),Name:m.Name,Path:m.Original,Directory:fi.IsDir(),Size:fi.Size(),Deleted:m.Deleted}) }
+	sort.Slice(out,func(i,j int)bool{return out[i].Deleted.After(out[j].Deleted)})
+	writeJSON(w,200,map[string]any{"items":out})
+}
+func restoreTrash(w http.ResponseWriter,r *http.Request) {
+	var in struct{ID string `json:"id"`};if json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in)!=nil || in.ID=="" || strings.ContainsAny(in.ID,"/\\"){writeJSON(w,400,map[string]string{"error":"invalid recycle-bin item"});return}
+	dir:=trashDir();src:=filepath.Join(dir,in.ID);b,err:=os.ReadFile(src+".json");if err!=nil{writeJSON(w,404,map[string]string{"error":"recycle-bin item not found"});return}
+	var m trashMetadata;if json.Unmarshal(b,&m)!=nil{writeJSON(w,500,map[string]string{"error":"invalid recycle-bin metadata"});return}
+	dst,err:=safePath(m.Original);if err!=nil{writeJSON(w,400,map[string]string{"error":"original path is no longer safe"});return}
+	if _,err=os.Lstat(dst);err==nil{writeJSON(w,409,map[string]string{"error":"original path already exists; rename or move the existing item first"});return}
+	if err=os.MkdirAll(filepath.Dir(dst),0750);err!=nil{writeJSON(w,500,map[string]string{"error":"cannot recreate original folder"});return}
+	if err=os.Rename(src,dst);err!=nil{writeJSON(w,500,map[string]string{"error":"restore failed"});return};_ = os.Remove(src+".json")
+	writeJSON(w,200,map[string]any{"ok":true,"path":m.Original})
+}
+func purgeTrash(w http.ResponseWriter,r *http.Request) {
+	dir:=trashDir();entries,err:=os.ReadDir(dir);if os.IsNotExist(err){writeJSON(w,200,map[string]bool{"ok":true});return};if err!=nil{writeJSON(w,500,map[string]string{"error":"cannot read recycle bin"});return}
+	for _,e:=range entries { if err=os.RemoveAll(filepath.Join(dir,e.Name()));err!=nil{writeJSON(w,500,map[string]string{"error":"could not completely empty recycle bin"});return} }
+	writeJSON(w,200,map[string]bool{"ok":true})
+}
+type BackupInfo struct { Name string `json:"name"`; Size int64 `json:"size"`; Created time.Time `json:"created"` }
+func listBackups(w http.ResponseWriter,r *http.Request) {
+	cfgMu.RLock();dir:=cfg.BackupDir;cfgMu.RUnlock()
+	entries,err:=os.ReadDir(dir);if os.IsNotExist(err){writeJSON(w,200,map[string]any{"items":[]BackupInfo{}});return};if err!=nil{writeJSON(w,500,map[string]string{"error":"cannot read backups"});return}
+	out:=[]BackupInfo{};for _,e:=range entries {if e.IsDir()||!strings.HasSuffix(e.Name(),".zip"){continue};fi,er:=e.Info();if er!=nil{continue};out=append(out,BackupInfo{Name:e.Name(),Size:fi.Size(),Created:fi.ModTime()})}
+	sort.Slice(out,func(i,j int)bool{return out[i].Created.After(out[j].Created)});writeJSON(w,200,map[string]any{"items":out})
+}
+func createBackup(w http.ResponseWriter,r *http.Request) {
+	cfgMu.RLock();root,dir:=cfg.Storage,cfg.BackupDir;cfgMu.RUnlock()
+	if err:=os.MkdirAll(dir,0700);err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup directory"});return}
+	name:="eznas-backup-"+time.Now().Format("20060102-150405")+".zip";target:=filepath.Join(dir,name);tmp:=target+".tmp"
+	f,err:=os.OpenFile(tmp,os.O_CREATE|os.O_EXCL|os.O_WRONLY,0600);if err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup file"});return}
+	zw:=zip.NewWriter(f)
+	err=filepath.WalkDir(root,func(p string,d fs.DirEntry,walkErr error)error{
+		if walkErr!=nil{return walkErr};if p==root{return nil}
+		rel,er:=filepath.Rel(root,p);if er!=nil{return er}
+		if rel==".eznas-trash"{if d.IsDir(){return filepath.SkipDir};return nil}
+		if d.Type()&os.ModeSymlink!=0 {if d.IsDir(){return filepath.SkipDir};return nil}
+		fi,er:=d.Info();if er!=nil{return er}
+		h,er:=zip.FileInfoHeader(fi);if er!=nil{return er};h.Name=filepath.ToSlash(rel);if fi.IsDir(){h.Name+="/"}else{h.Method=zip.Deflate}
+		writer,er:=zw.CreateHeader(h);if er!=nil{return er}
+		if fi.IsDir(){return nil}
+		in,er:=os.Open(p);if er!=nil{return er};_,copyErr:=io.Copy(writer,in);closeErr:=in.Close();if copyErr!=nil{return copyErr};return closeErr
+	})
+	closeZipErr:=zw.Close();closeFileErr:=f.Close();if err==nil{err=closeZipErr};if err==nil{err=closeFileErr}
+	if err!=nil{_ = os.Remove(tmp);writeJSON(w,500,map[string]string{"error":"backup failed; check available disk space and permissions"});return}
+	if err=os.Rename(tmp,target);err!=nil{_ = os.Remove(tmp);writeJSON(w,500,map[string]string{"error":"cannot finalize backup"});return}
+	fi,err:=os.Stat(target);if err!=nil{writeJSON(w,500,map[string]string{"error":"backup created but metadata could not be read"});return}
+	writeJSON(w,201,map[string]any{"ok":true,"backup":BackupInfo{Name:name,Size:fi.Size(),Created:fi.ModTime()}})
+}
+func downloadBackup(w http.ResponseWriter,r *http.Request) {
+	name:=r.URL.Query().Get("name");if name==""||filepath.Base(name)!=name||!strings.HasSuffix(name,".zip"){http.Error(w,"invalid backup name",400);return}
+	cfgMu.RLock();p:=filepath.Join(cfg.BackupDir,name);cfgMu.RUnlock()
+	fi,err:=os.Stat(p);if err!=nil||fi.IsDir(){http.NotFound(w,r);return}
+	w.Header().Set("Content-Disposition","attachment; filename="+strconv.Quote(name));http.ServeFile(w,r,p)
+}
+func generateTLSCertificate() {
+	dir:=filepath.Dir(cfgPath);if err:=os.MkdirAll(dir,0700);err!=nil{logger.Fatal(err)}
+	certPath:=filepath.Join(dir,"tls-cert.pem");keyPath:=filepath.Join(dir,"tls-key.pem")
+	key,err:=rsa.GenerateKey(rand.Reader,3072);if err!=nil{logger.Fatal(err)}
+	host,_:=os.Hostname();if host==""{host="localhost"}
+	now:=time.Now()
+	template:=x509.Certificate{SerialNumber:big.NewInt(now.UnixNano()),Subject:pkix.Name{CommonName:host},NotBefore:now.Add(-5*time.Minute),NotAfter:now.AddDate(2,0,0),KeyUsage:x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,ExtKeyUsage:[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},BasicConstraintsValid:true,DNSNames:[]string{"localhost",host},IPAddresses:[]net.IP{net.ParseIP("127.0.0.1"),net.ParseIP("::1")}}
+	if ip:=net.ParseIP(cfg.Host);ip!=nil{template.IPAddresses=append(template.IPAddresses,ip)}
+	der,err:=x509.CreateCertificate(rand.Reader,&template,&template,&key.PublicKey,key);if err!=nil{logger.Fatal(err)}
+	certPEM:=pem.EncodeToMemory(&pem.Block{Type:"CERTIFICATE",Bytes:der});keyPEM:=pem.EncodeToMemory(&pem.Block{Type:"RSA PRIVATE KEY",Bytes:x509.MarshalPKCS1PrivateKey(key)})
+	if err=os.WriteFile(certPath,certPEM,0600);err!=nil{logger.Fatal(err)}
+	if err=os.WriteFile(keyPath,keyPEM,0600);err!=nil{logger.Fatal(err)}
+	cfg.TLSCert=certPath;cfg.TLSKey=keyPath
+	if err=saveConfig();err!=nil{logger.Fatal(err)}
+	fmt.Printf("HTTPS certificate and key created. Config updated. Restart ezNAS to enable HTTPS.\nCertificate: %s\nPrivate key: %s\nNOTE: This is self-signed; browsers will show a trust warning until you trust the certificate or configure a trusted certificate.\n",certPath,keyPath)
+}
