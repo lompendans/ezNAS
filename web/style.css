@@ -39,3 +39,5 @@ main{padding-top:44px}header{align-items:flex-start;margin-bottom:36px}header h1
 @media(max-width:520px){.share-link-result{grid-template-columns:1fr}.share-link-result button{width:100%}}
 
 .share-create{width:100%;margin-top:16px}
+
+.share-warning{padding:10px 12px;border:1px solid rgba(251,191,36,.28);border-radius:10px;background:rgba(120,75,10,.16);color:#f7d98a;font-size:11px;line-height:1.6}
