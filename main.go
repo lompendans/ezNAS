@@ -393,7 +393,7 @@ func listFiles(w http.ResponseWriter,r *http.Request) {
 	p,err:=safePath(r.URL.Query().Get("path")); if err!=nil { writeJSON(w,400,map[string]string{"error":err.Error()});return }
 	entries,err:=os.ReadDir(p); if err!=nil { writeJSON(w,400,map[string]string{"error":err.Error()});return }
 	out:=make([]FileInfo,0,len(entries))
-	for _,e:=range entries { info,err:=e.Info();if err!=nil{continue}; rel,_:=filepath.Rel(cfg.Storage,filepath.Join(p,e.Name())); out=append(out,FileInfo{Name:e.Name(),Path:filepath.ToSlash(rel),Directory:e.IsDir(),Size:info.Size(),Modified:info.ModTime()}) }
+	for _,e:=range entries { if e.Name()==".eznas-trash" { continue }; info,err:=e.Info();if err!=nil{continue}; rel,_:=filepath.Rel(cfg.Storage,filepath.Join(p,e.Name())); out=append(out,FileInfo{Name:e.Name(),Path:filepath.ToSlash(rel),Directory:e.IsDir(),Size:info.Size(),Modified:info.ModTime()}) }
 	sort.Slice(out,func(i,j int)bool{if out[i].Directory!=out[j].Directory{return out[i].Directory};return strings.ToLower(out[i].Name)<strings.ToLower(out[j].Name)})
 	writeJSON(w,200,map[string]any{"path":r.URL.Query().Get("path"),"items":out})
 }
@@ -450,6 +450,7 @@ func searchFiles(w http.ResponseWriter,r *http.Request) {
 	cfgMu.RLock();root:=cfg.Storage;cfgMu.RUnlock();out:=[]FileInfo{};limit:=500
 	err:=filepath.WalkDir(root,func(p string,d fs.DirEntry,err error)error{
 		if err!=nil{return nil};if p==root{return nil}
+		if filepath.Base(p)==".eznas-trash" && d.IsDir(){return filepath.SkipDir}
 		if d.Type()&os.ModeSymlink!=0{return filepath.SkipDir}
 		if strings.Contains(strings.ToLower(d.Name()),strings.ToLower(q)){info,e:=d.Info();if e==nil{rel,_:=filepath.Rel(root,p);out=append(out,FileInfo{Name:d.Name(),Path:filepath.ToSlash(rel),Directory:d.IsDir(),Size:info.Size(),Modified:info.ModTime()});if len(out)>=limit{return errors.New("limit")}}}
 		return nil
