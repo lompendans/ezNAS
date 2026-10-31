@@ -7,6 +7,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"embed"
+	"os/exec"
+	"strconv"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +20,12 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed updater_windows.ps1 updater_linux.sh
+var updateHelperFiles embed.FS
+
+var updateLaunched bool
+var updateStatusMessage string
 
 const releaseAPI = "https://api.github.com/repos/lompendans/ezNAS/releases/latest"
 
@@ -47,7 +56,7 @@ func stageLatestUpdate() error {
 	var release githubRelease
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&release); err != nil { return fmt.Errorf("read release metadata: %w", err) }
 	if release.TagName == "" || release.Draft || release.Prerelease { return errors.New("no published stable release was found") }
-	if version == release.TagName { fmt.Printf("ezNAS %s is already installed.\n", version); return nil }
+	if !isReleaseNewer(release.TagName, version) { updateStatusMessage = fmt.Sprintf("ezNAS %s is already up to date (latest stable: %s).", version, release.TagName); fmt.Println(updateStatusMessage); return nil }
 
 	arch := runtime.GOARCH
 	var asset string
@@ -84,7 +93,12 @@ func stageLatestUpdate() error {
 	if err := os.Chmod(tmp, 0755); err != nil { os.Remove(tmp); return err }
 	if err := os.Rename(tmp, dest); err != nil { os.Remove(tmp); return fmt.Errorf("finalize staged update: %w", err) }
 	fmt.Printf("Verified ezNAS %s and staged it at:\n%s\n", release.TagName, dest)
-	fmt.Println("Your installed executable has not been changed. Applying updates safely is the next updater step.")
+	target, err := os.Executable()
+	if err != nil { return fmt.Errorf("locate installed executable: %w", err) }
+	if err := launchUpdateHelper(target, dest, cfgDir); err != nil { return err }
+	updateLaunched = true
+	updateStatusMessage = fmt.Sprintf("Verified ezNAS %s. The updater will stop ezNAS, replace the executable, and restart it.", release.TagName)
+	fmt.Println(updateStatusMessage)
 	return nil
 }
 
@@ -184,4 +198,54 @@ func copyFile(src, dest string) error {
 	closeErr := out.Close()
 	if copyErr != nil { return copyErr }
 	return closeErr
+}
+
+
+func isReleaseNewer(latest, current string) bool {
+	if current == "" || current == "dev" || current == "unknown" { return true }
+	parse := func(s string) ([]int, bool) {
+		s = strings.TrimPrefix(strings.TrimSpace(s), "v")
+		if i := strings.IndexAny(s, "+-"); i >= 0 { s = s[:i] }
+		parts := strings.Split(s, ".")
+		out := make([]int, len(parts))
+		for i, p := range parts {
+			n, err := strconv.Atoi(p)
+			if err != nil || n < 0 { return nil, false }
+			out[i] = n
+		}
+		return out, true
+	}
+	a, okA := parse(latest); b, okB := parse(current)
+	if !okA || !okB { return latest != current }
+	for i := 0; i < len(a) || i < len(b); i++ {
+		x, y := 0, 0
+		if i < len(a) { x = a[i] }
+		if i < len(b) { y = b[i] }
+		if x != y { return x > y }
+	}
+	return false
+}
+
+func launchUpdateHelper(target, staged, configDir string) error {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" { return fmt.Errorf("automatic updates are not supported on %s", runtime.GOOS) }
+	stageDir := filepath.Dir(staged)
+	pid := os.Getpid()
+	if runtime.GOOS == "windows" {
+		script := filepath.Join(stageDir, "apply-update.ps1")
+		body, err := updateHelperFiles.ReadFile("updater_windows.ps1")
+		if err != nil { return err }
+		if err := os.WriteFile(script, body, 0600); err != nil { return err }
+		args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-Target", target, "-Staged", staged, "-ConfigDir", configDir, "-ParentPid", strconv.Itoa(pid)}
+		cmd := exec.Command("powershell.exe", args...)
+		if err := cmd.Start(); err != nil { return fmt.Errorf("start Windows update helper: %w", err) }
+		return nil
+	}
+	script := filepath.Join(stageDir, "apply-update.sh")
+	body, err := updateHelperFiles.ReadFile("updater_linux.sh")
+	if err != nil { return err }
+	if err := os.WriteFile(script, body, 0700); err != nil { return err }
+	if err := os.Chmod(script, 0700); err != nil { return err }
+	cmd := exec.Command("/bin/sh", script, target, staged, configDir, strconv.Itoa(pid))
+	if err := cmd.Start(); err != nil { return fmt.Errorf("start Linux update helper: %w", err) }
+	return nil
 }
