@@ -630,7 +630,7 @@ func createBackup(w http.ResponseWriter,r *http.Request) {
 		return
 	}
 	resolvedRel, relErr := filepath.Rel(resolvedRoot, resolvedDir)
-	if relErr == nil && (resolvedRel == "." || resolvedRel == ".." || !strings.HasPrefix(resolvedRel, ".."+string(filepath.Separator))) {
+	if relErr == nil && resolvedRel != ".." && !strings.HasPrefix(resolvedRel, ".."+string(filepath.Separator)) {
 		writeJSON(w,400,map[string]string{"error":"backup_dir must resolve outside the storage directory to prevent recursive backups"})
 		return
 	}
