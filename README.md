@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/lompendans/ezNAS/main/install.sh | 
 irm https://raw.githubusercontent.com/lompendans/ezNAS/main/install.ps1 | iex
 ```
 
-For security-conscious installations, inspect the installer script before executing it. The installer verifies the downloaded release asset against the published SHA-256 checksum file. On Windows, it adds the install directory to your user PATH and offers optional automatic startup at sign-in. Open a new terminal after installation so the updated PATH is picked up.
+For security-conscious installations, inspect the installer script before executing it. The installer verifies the downloaded release asset against the published SHA-256 checksum file. On Windows, it adds the install directory to your user PATH, offers optional trusted local HTTPS setup, and offers automatic startup at sign-in. The HTTPS option generates a local self-signed certificate and adds it to the current Windows user's trusted root store. Open a new terminal after installation so the updated PATH is picked up.
 
 ## Run from source
 
@@ -76,6 +76,14 @@ eznas tls generate
 ```
 
 Restart ezNAS. The command writes a certificate and private key into the config directory and updates the configuration to use them. Browsers will show a trust warning until the certificate is trusted; this is expected for self-signed certificates.
+
+On Windows, you can add the generated self-signed certificate to the **current user's** trusted root store with:
+
+```powershell
+eznas tls trust
+```
+
+This command only accepts a valid self-signed certificate and does not require administrator elevation. Restart your browser and visit `https://localhost:8080`. The certificate includes localhost, the machine hostname, loopback addresses, and IP addresses present when it was generated; if you later regenerate it or access a new IP address, trust/name matching may need to be configured again. Trusting a self-signed certificate is a deliberate security decision: only trust a certificate you generated yourself. This command currently supports Windows; on Linux, use your distribution's certificate trust-store tooling.
 
 To use a certificate issued by a trusted CA, including a Let's Encrypt certificate issued by Certbot or another ACME client, stop ezNAS and point it at the certificate and matching private key:
 
