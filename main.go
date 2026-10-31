@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -100,9 +101,12 @@ func main() {
 				case "status":
 					printTLSStatus()
 					return
+				case "trust":
+					trustTLSCertificate()
+					return
 				}
 			}
-			fmt.Fprintln(os.Stderr, "Usage: eznas tls generate | use <certificate.pem> <private-key.pem> | status")
+			fmt.Fprintln(os.Stderr, "Usage: eznas tls generate | use <certificate.pem> <private-key.pem> | status | trust")
 			os.Exit(2)
 		case "password":
 			if len(args) > 1 && args[1] == "set" { setPassword(); return }
@@ -202,6 +206,7 @@ func printHelp() {
 	fmt.Println("  eznas tls generate Generate a local self-signed HTTPS certificate")
 	fmt.Println("  eznas tls use <cert> <key> Use an existing trusted certificate and private key")
 	fmt.Println("  eznas tls status Show configured certificate details and expiry")
+	fmt.Println("  eznas tls trust  Trust the configured self-signed certificate for the current Windows user")
 	fmt.Println("  eznas version      Print version")
 	fmt.Println("  eznas help         Show this help")
 }
@@ -588,6 +593,37 @@ func useTLSCertificate(certArg, keyArg string) {
 	if err := saveConfig(); err != nil { logger.Fatal(err) }
 	fmt.Printf("TLS certificate configured. Restart ezNAS to enable HTTPS.\nSubject: %s\nExpires: %s\nCertificate: %s\nPrivate key: %s\n", leaf.Subject.String(), leaf.NotAfter.Format(time.RFC3339), certPath, keyPath)
 	fmt.Println("Keep the private key readable only by the account running ezNAS. If another tool renews this certificate, it can keep using these paths; restart ezNAS after renewal to reload it.")
+}
+
+func trustTLSCertificate() {
+	if runtime.GOOS != "windows" {
+		fmt.Fprintln(os.Stderr, "Automatic certificate-store installation is currently supported only on Windows.")
+		fmt.Fprintln(os.Stderr, "On Linux, install the certificate into your distribution's trusted CA store and restart your browser.")
+		os.Exit(2)
+	}
+	if cfg.TLSCert == "" || cfg.TLSKey == "" {
+		fmt.Fprintln(os.Stderr, "HTTPS is not configured. Run 'eznas tls generate' first, or configure a certificate with 'eznas tls use'.")
+		os.Exit(2)
+	}
+	pair, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
+	if err != nil { logger.Fatalf("cannot load configured certificate/key: %v", err) }
+	if len(pair.Certificate) == 0 { logger.Fatal("configured certificate file is empty") }
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil { logger.Fatalf("cannot parse certificate: %v", err) }
+	if !leaf.Subject.Equal(leaf.Issuer) {
+		logger.Fatal("refusing to add a CA-issued server certificate as a trusted root; use a self-signed certificate created by 'eznas tls generate'")
+	}
+	if err := leaf.CheckSignatureFrom(leaf); err != nil {
+		logger.Fatal("refusing to trust certificate: it is not validly self-signed")
+	}
+	// Trust is scoped to the current Windows user; no administrator elevation is needed.
+	cmd := exec.Command("certutil.exe", "-user", "-addstore", "Root", cfg.TLSCert)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil { logger.Fatalf("Windows could not add the certificate to the current user's Root store: %v", err) }
+	fmt.Println("Certificate added to the current Windows user's Trusted Root Certification Authorities store.")
+	fmt.Println("Restart your browser, then open https://localhost:" + strconv.Itoa(cfg.Port) + " or use a hostname/IP listed in 'eznas tls status'.")
+	fmt.Println("This trust applies only to this Windows user and this certificate. Re-run 'eznas tls trust' after regenerating the certificate.")
 }
 
 func printTLSStatus() {
