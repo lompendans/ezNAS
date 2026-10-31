@@ -6,6 +6,9 @@ CONFIG_DIR=$3
 PARENT_PID=$4
 BACKUP="$TARGET.eznas-backup"
 PID_FILE="$CONFIG_DIR/eznas.pid"
+mkdir -p "$CONFIG_DIR"
+exec >> "$CONFIG_DIR/update.log" 2>&1
+printf "\n[%s] Starting ezNAS updater (pid %s)\n" "$(date -Is 2>/dev/null || date)" "$"
 # Wait until the updater process exits before replacing the executable.
 i=0
 while kill -0 "$PARENT_PID" 2>/dev/null && [ "$i" -lt 60 ]; do sleep 0.5; i=$((i+1)); done
