@@ -56,10 +56,11 @@ func loginAttemptAllowed(remoteAddr string) (bool, time.Duration) {
 				return false, loginFailureWindow
 			}
 		}
+		loginBuckets[ip] = loginBucket{started: now, failures: 1}
 		return true, 0
 	}
 	if now.Sub(bucket.started) >= loginFailureWindow {
-		delete(loginBuckets, ip)
+		loginBuckets[ip] = loginBucket{started: now, failures: 1}
 		return true, 0
 	}
 	if bucket.failures >= loginFailureLimit {
