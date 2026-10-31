@@ -74,15 +74,19 @@ Password protection is always enabled. On the first run, ezNAS generates a stron
 
 ## Updating
 
-The web interface checks GitHub for the latest stable release on startup and periodically. If a newer version is available, it shows a link to the release page.
+The web interface checks GitHub for the latest stable release on startup and periodically. If a newer version is available, it shows an update banner.
 
 You can also run:
 
-```sh
+\`\`\`sh
 eznas update
-```
+\`\`\`
 
-This downloads the matching Windows or Linux release archive and `checksums.txt`, verifies the archive's SHA-256 hash, extracts the expected executable, and stages it under the ezNAS user configuration directory at `updates/<release-tag>/`. **This phase does not replace the installed executable or restart a running server.** Keep using the current installation until the safe apply/restart helper is implemented in a later phase. If the release is already installed, the command reports that and exits.
+This downloads the matching Windows or Linux release archive and \`checksums.txt\`, verifies the archive's SHA-256 hash, extracts the expected executable, and stages it under the ezNAS user configuration directory at \`updates/<release-tag>/\`. A separate platform helper waits for the updater process to exit, stops a running server, backs up the current executable, installs the verified binary, and attempts to restart ezNAS. If the new version fails to launch, the helper restores the previous executable. The backup is retained as \`<executable>.eznas-backup\` for manual recovery.
+
+The web UI's **Install update** button runs the same workflow. The **Install automatically** checkbox is an opt-in preference stored in that browser; when enabled, ezNAS applies a detected stable update during a subsequent update check. Updates may briefly interrupt connections. Configuration and storage directories are not modified by the updater. Linux systemd user installations are restarted through systemd when the \`eznas.service\` unit exists.
+
+Automatic updating is supported for Windows and Linux on amd64 and arm64. Review release notes and keep backups of important files regardless of updater safeguards.
 
 ## Configuration
 
