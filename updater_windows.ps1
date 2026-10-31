@@ -5,6 +5,8 @@ param(
   [Parameter(Mandatory=$true)][int]$ParentPid
 )
 $ErrorActionPreference = 'Stop'
+$Log = Join-Path (Split-Path -Parent $Staged) 'update.log'
+try { Start-Transcript -Path $Log -Append | Out-Null } catch {}
 $Backup = "$Target.eznas-backup"
 $PidFile = Join-Path $ConfigDir 'eznas.pid'
 try {
@@ -44,6 +46,7 @@ try {
     if ($p.HasExited) { throw 'Updated ezNAS exited immediately after launch.' }
     Write-Output 'Update applied. Previous executable retained at:'
     Write-Output $Backup
+    try { Stop-Transcript | Out-Null } catch {}
   } catch {
     Copy-Item -LiteralPath $Backup -Destination $Target -Force
     Start-Process -FilePath $Target -ArgumentList 'start' -WorkingDirectory (Split-Path -Parent $Target) | Out-Null
@@ -51,5 +54,6 @@ try {
   }
 } catch {
   Write-Error $_
+  try { Stop-Transcript | Out-Null } catch {}
   exit 1
 }
