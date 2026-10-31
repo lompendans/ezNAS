@@ -32,7 +32,7 @@ jobs:
               rm dist/eznas.exe
             else
               GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/eznas" .
-              tar -C dist -czf "dist/$NAME.tar.gz" eznas
+              tar -czf "dist/$NAME.tar.gz" -C dist eznas
               rm dist/eznas
             fi
           done
