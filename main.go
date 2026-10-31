@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/sha256"
@@ -610,7 +611,7 @@ func trustTLSCertificate() {
 	if len(pair.Certificate) == 0 { logger.Fatal("configured certificate file is empty") }
 	leaf, err := x509.ParseCertificate(pair.Certificate[0])
 	if err != nil { logger.Fatalf("cannot parse certificate: %v", err) }
-	if !leaf.Subject.Equal(leaf.Issuer) {
+	if !bytes.Equal(leaf.RawSubject, leaf.RawIssuer) {
 		logger.Fatal("refusing to add a CA-issued server certificate as a trusted root; use a self-signed certificate created by 'eznas tls generate'")
 	}
 	if err := leaf.CheckSignatureFrom(leaf); err != nil {
