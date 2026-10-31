@@ -104,7 +104,11 @@ func originAllowed(r *http.Request) bool {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return false
 	}
-	return strings.EqualFold(u.Host, r.Host)
+	expectedScheme := "http"
+	if requestIsSecure(r) {
+		expectedScheme = "https"
+	}
+	return strings.EqualFold(u.Scheme, expectedScheme) && strings.EqualFold(u.Host, r.Host)
 }
 
 func requestIsSecure(r *http.Request) bool {
