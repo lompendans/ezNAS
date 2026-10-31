@@ -197,3 +197,26 @@ func TestCreateShareReturnsSecretLinkAndDoesNotPersistToken(t *testing.T) {
 		t.Fatalf("shared download status=%d body=%q", downloadRec.Code, downloadRec.Body.String())
 	}
 }
+
+func TestRevokeSharesForPathRemovesSubtreeLinks(t *testing.T) {
+	oldCfgPath, oldShares := cfgPath, shares
+	defer func() { cfgPath, shares = oldCfgPath, oldShares }()
+	cfgPath = filepath.Join(t.TempDir(), "config.json")
+	shares = map[string]ShareRecord{
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {Path: "photos/2024/a.jpg", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)},
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {Path: "photos/family/b.jpg", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)},
+		"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {Path: "documents/notes.txt", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)},
+	}
+	if err := revokeSharesForPath("photos"); err != nil {
+		t.Fatal(err)
+	}
+	if len(shares) != 1 {
+		t.Fatalf("expected only the unrelated share to remain, got %d", len(shares))
+	}
+	if _, ok := shares["cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]; !ok {
+		t.Fatal("revoke removed an unrelated share")
+	}
+	if _, err := os.Stat(shareStorePath()); err != nil {
+		t.Fatalf("revoked shares were not persisted: %v", err)
+	}
+}
