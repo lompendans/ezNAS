@@ -166,7 +166,7 @@ func createShare(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
-	if in.ExpiresInHours < 1 || time.Duration(in.ExpiresInHours)*time.Hour > maxShareLifetime {
+	if in.ExpiresInHours < 1 || in.ExpiresInHours > int(maxShareLifetime/time.Hour) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "share expiry must be between 1 hour and 30 days"})
 		return
 	}
