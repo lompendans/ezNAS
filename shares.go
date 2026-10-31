@@ -118,6 +118,39 @@ func saveShareStoreLocked() error {
 	return nil
 }
 
+// revokeSharesForPath removes links for a file or an entire folder subtree.
+// A successful delete/rename must not leave a bearer link that can become live
+// again if a file is later restored or recreated at the old path.
+func revokeSharesForPath(relPath string) error {
+	base := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
+	if base == "." || base == "" {
+		return nil
+	}
+	prefix := base + "/"
+	shareMu.Lock()
+	removed := make(map[string]ShareRecord)
+	for id, record := range shares {
+		recordPath := filepath.ToSlash(filepath.Clean(filepath.FromSlash(record.Path)))
+		if recordPath == base || strings.HasPrefix(recordPath, prefix) {
+			removed[id] = record
+			delete(shares, id)
+		}
+	}
+	if len(removed) == 0 {
+		shareMu.Unlock()
+		return nil
+	}
+	if err := saveShareStoreLocked(); err != nil {
+		for id, record := range removed {
+			shares[id] = record
+		}
+		shareMu.Unlock()
+		return err
+	}
+	shareMu.Unlock()
+	return nil
+}
+
 func shareToken() (string, string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
