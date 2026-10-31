@@ -56,6 +56,8 @@ $("create-backup").addEventListener("click",async()=>{const button=$("create-bac
 
 async function openShareDialog(item){
   pendingSharePath=item.path;
+  const localHosts=["localhost","127.0.0.1","::1"];
+  $("share-local-warning").classList.toggle("hidden",localHosts.includes(location.hostname.toLowerCase()));
   $("share-file-name").textContent=item.name;
   $("share-link-result").classList.add("hidden");
   $("share-url").value="";
