@@ -370,7 +370,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var in struct { Password string `json:"password"` }
 	if err := json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in); err != nil { writeJSON(w,400,map[string]string{"error":"invalid request"}); return }
 	if !checkPassword(in.Password) {
-		recordLoginFailure(r.RemoteAddr)
 		writeJSON(w,401,map[string]string{"error":"incorrect password"})
 		return
 	}
