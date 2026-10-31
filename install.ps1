@@ -46,8 +46,19 @@ try {
     }
 
     Write-Host ""
-    Write-Host "To enable File Explorer sharing and Network discovery, run setup-network.ps1 from the ezNAS source repository in an Administrator PowerShell window."
-    Write-Host "The network setup is separate because it changes Windows SMB sharing and firewall settings."
+    $configureNetwork = Read-Host "Configure Windows Network discovery and File Explorer (SMB) sharing now? This requires Administrator approval. [y/N]"
+    if ($configureNetwork -match "^(y|yes)$") {
+        $NetworkScript = Join-Path $Temp "setup-network.ps1"
+        $NetworkUri = "https://raw.githubusercontent.com/$Repo/main/setup-network.ps1"
+        Invoke-WebRequest -Uri $NetworkUri -OutFile $NetworkScript
+        $ConfigPath = Join-Path $env:APPDATA "eznas\config.json"
+        $CurrentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        $ElevatedArgs = "-NoProfile -ExecutionPolicy Bypass -File '$NetworkScript' -ConfigPath '$ConfigPath' -TargetIdentity '$CurrentIdentity'"
+        Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -ArgumentList $ElevatedArgs
+        Write-Host "Windows network setup finished. If you changed storage or port, restart ezNAS." -ForegroundColor Green
+    } else {
+        Write-Host "Network setup skipped. You can run setup-network.ps1 later from the ezNAS repository in Administrator PowerShell."
+    }
     Write-Host "Open a new terminal for PATH changes to be visible in all existing shells."
 } finally {
     Remove-Item $Temp -Recurse -Force -ErrorAction SilentlyContinue
