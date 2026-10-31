@@ -16,3 +16,8 @@ main{padding-top:44px}header{align-items:flex-start;margin-bottom:36px}header h1
 @media(max-width:1000px){.server-chip{min-width:155px}.header-actions{align-items:stretch}.header-actions .button,.header-actions>.primary{justify-content:center}}
 @media(max-width:800px){main{padding-top:25px}.server-chip{order:-1;width:100%;max-width:none}.server-chip strong{max-width:none}.header-actions{width:100%}.header-actions .button,.header-actions>.primary{flex:1}.sidebar{backdrop-filter:blur(18px)}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Update notifications */
+.update-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 20px;margin:0 0 20px;border:1px solid rgba(129,140,248,.38);border-radius:15px;background:linear-gradient(115deg,rgba(49,46,129,.34),rgba(18,26,43,.9));box-shadow:0 12px 36px rgba(0,0,0,.14)}
+.update-banner strong{display:block;color:#eef2ff;font-size:14px}.update-banner p{margin:6px 0 0;color:#aebbd1;font-size:12px;line-height:1.5}.update-actions{display:flex;align-items:center;gap:9px;flex-shrink:0}.update-actions a{text-decoration:none;font-size:12px;font-weight:650}.update-actions button{font-size:12px}
+@media(max-width:700px){.update-banner{align-items:stretch;flex-direction:column}.update-actions{flex-wrap:wrap}.update-actions>*{flex:1;text-align:center}}
