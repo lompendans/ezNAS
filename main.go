@@ -521,6 +521,10 @@ func listBackups(w http.ResponseWriter,r *http.Request) {
 }
 func createBackup(w http.ResponseWriter,r *http.Request) {
 	cfgMu.RLock();root,dir:=cfg.Storage,cfg.BackupDir;cfgMu.RUnlock()
+	relBackup, relErr := filepath.Rel(root, dir)
+	if relErr == nil && relBackup != ".." && !strings.HasPrefix(relBackup, ".."+string(filepath.Separator)) {
+		writeJSON(w,400,map[string]string{"error":"backup_dir must be outside the storage directory to prevent recursive backups"}); return
+	}
 	if err:=os.MkdirAll(dir,0700);err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup directory"});return}
 	name:="eznas-backup-"+time.Now().Format("20060102-150405")+".zip";target:=filepath.Join(dir,name);tmp:=target+".tmp"
 	f,err:=os.OpenFile(tmp,os.O_CREATE|os.O_EXCL|os.O_WRONLY,0600);if err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup file"});return}
@@ -556,6 +560,12 @@ func generateTLSCertificate() {
 	now:=time.Now()
 	template:=x509.Certificate{SerialNumber:big.NewInt(now.UnixNano()),Subject:pkix.Name{CommonName:host},NotBefore:now.Add(-5*time.Minute),NotAfter:now.AddDate(2,0,0),KeyUsage:x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,ExtKeyUsage:[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},BasicConstraintsValid:true,DNSNames:[]string{"localhost",host},IPAddresses:[]net.IP{net.ParseIP("127.0.0.1"),net.ParseIP("::1")}}
 	if ip:=net.ParseIP(cfg.Host);ip!=nil{template.IPAddresses=append(template.IPAddresses,ip)}
+	if interfaces, e := net.Interfaces(); e == nil {
+		for _, iface := range interfaces {
+			addrs, e := iface.Addrs(); if e != nil { continue }
+			for _, addr := range addrs { if network, ok := addr.(*net.IPNet); ok && network.IP != nil { template.IPAddresses = append(template.IPAddresses, network.IP) } }
+		}
+	}
 	der,err:=x509.CreateCertificate(rand.Reader,&template,&template,&key.PublicKey,key);if err!=nil{logger.Fatal(err)}
 	certPEM:=pem.EncodeToMemory(&pem.Block{Type:"CERTIFICATE",Bytes:der});keyPEM:=pem.EncodeToMemory(&pem.Block{Type:"RSA PRIVATE KEY",Bytes:x509.MarshalPKCS1PrivateKey(key)})
 	if err=os.WriteFile(certPath,certPEM,0600);err!=nil{logger.Fatal(err)}
