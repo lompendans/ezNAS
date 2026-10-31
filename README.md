@@ -18,7 +18,7 @@ ezNAS is a lightweight file server with a browser-based file manager. It is desi
 - Path traversal checks and safeguards against symlinks escaping the storage directory.
 - Linux storage-capacity display.
 - One-command installers that download published releases and verify SHA-256 checksums.
-- Update checks in the web UI, plus `eznas update` to download the latest stable release, verify its SHA-256 checksum, and stage the executable without touching the currently installed binary.
+- Update checks in the web UI, a one-click installer, and optional automatic installation with SHA-256 verification and rollback support.
 - Windows installer adds ezNAS to the current user's PATH and can optionally start it automatically at sign-in.
 
 ## Install
