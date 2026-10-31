@@ -1,10 +1,14 @@
 # ezNAS Windows Network + SMB setup
 # Run from an elevated PowerShell terminal. This uses Windows' built-in SMB server.
+param(
+    [string]$ConfigPath = "",
+    [string]$TargetIdentity = ""
+)
 $ErrorActionPreference = "Stop"
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Please reopen PowerShell with Run as administrator, then run this script again." }
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-$configPath = if ($env:EZNAS_CONFIG) { $env:EZNAS_CONFIG } else { Join-Path $env:APPDATA "eznas\config.json" }
+$identity = if ($TargetIdentity) { $TargetIdentity } else { [Security.Principal.WindowsIdentity]::GetCurrent().Name }
+$configPath = if ($ConfigPath) { $ConfigPath } elseif ($env:EZNAS_CONFIG) { $env:EZNAS_CONFIG } else { Join-Path $env:APPDATA "eznas\config.json" }
 $configDir = Split-Path -Parent $configPath
 New-Item -ItemType Directory -Path $configDir -Force | Out-Null
 $config = @{ host = "0.0.0.0"; port = 8080; storage = (Join-Path $PSScriptRoot "eznas-data") }
