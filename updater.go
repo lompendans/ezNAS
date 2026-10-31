@@ -91,6 +91,8 @@ func stageLatestUpdate() error {
 	tmp := dest + ".tmp"
 	if err := copyFile(staged, tmp); err != nil { return fmt.Errorf("stage verified executable: %w", err) }
 	if err := os.Chmod(tmp, 0755); err != nil { os.Remove(tmp); return err }
+	// Windows rename does not replace an existing destination.
+	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) { os.Remove(tmp); return fmt.Errorf("replace previous staged executable: %w", err) }
 	if err := os.Rename(tmp, dest); err != nil { os.Remove(tmp); return fmt.Errorf("finalize staged update: %w", err) }
 	fmt.Printf("Verified ezNAS %s and staged it at:\n%s\n", release.TagName, dest)
 	target, err := os.Executable()
