@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/hmac"
 	"crypto/x509"
-	"crypto/rsa"
+	"crypto/rsa"\n\t"crypto/tls"
 	"crypto/x509/pkix"
 	"math/big"
 	"archive/zip"
@@ -86,7 +86,23 @@ func main() {
 		case "status": checkStatus(); return
 		case "stop": stopServer(); return
 		case "update": runUpdate(); return
-		case "tls": if len(args)>1 && args[1]=="generate" { generateTLSCertificate(); return }; fmt.Println("Usage: eznas tls generate"); return
+		case "tls":
+			if len(args) > 1 {
+				switch args[1] {
+				case "generate":
+					generateTLSCertificate()
+					return
+				case "use":
+					if len(args) != 4 { fmt.Fprintln(os.Stderr, "Usage: eznas tls use <certificate.pem> <private-key.pem>"); os.Exit(2) }
+					useTLSCertificate(args[2], args[3])
+					return
+				case "status":
+					printTLSStatus()
+					return
+				}
+			}
+			fmt.Fprintln(os.Stderr, "Usage: eznas tls generate | use <certificate.pem> <private-key.pem> | status")
+			os.Exit(2)
 		case "password":
 			if len(args) > 1 && args[1] == "set" { setPassword(); return }
 			fmt.Println("Usage: eznas password set"); os.Exit(2)
@@ -183,6 +199,8 @@ func printHelp() {
 	fmt.Println("  eznas password set Set or change the required password")
 	fmt.Println("  eznas update       Download and verify the latest stable release")
 	fmt.Println("  eznas tls generate Generate a local self-signed HTTPS certificate")
+	fmt.Println("  eznas tls use <cert> <key> Use an existing trusted certificate and private key")
+	fmt.Println("  eznas tls status Show configured certificate details and expiry")
 	fmt.Println("  eznas version      Print version")
 	fmt.Println("  eznas help         Show this help")
 }
@@ -552,6 +570,46 @@ func downloadBackup(w http.ResponseWriter,r *http.Request) {
 	fi,err:=os.Stat(p);if err!=nil||fi.IsDir(){http.NotFound(w,r);return}
 	w.Header().Set("Content-Disposition","attachment; filename="+strconv.Quote(name));http.ServeFile(w,r,p)
 }
+func useTLSCertificate(certArg, keyArg string) {
+	certPath, err := filepath.Abs(certArg)
+	if err != nil { logger.Fatal(err) }
+	keyPath, err := filepath.Abs(keyArg)
+	if err != nil { logger.Fatal(err) }
+	pair, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil { logger.Fatalf("certificate/key validation failed: %v", err) }
+	if len(pair.Certificate) == 0 { logger.Fatal("certificate file contains no certificate") }
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil { logger.Fatalf("parse certificate: %v", err) }
+	if time.Now().Before(leaf.NotBefore) { logger.Fatalf("certificate is not valid until %s", leaf.NotBefore.Format(time.RFC3339)) }
+	if time.Now().After(leaf.NotAfter) { logger.Fatalf("certificate expired on %s", leaf.NotAfter.Format(time.RFC3339)) }
+	// Validate the pair before changing configuration, so a typo cannot disable a working setup.
+	cfg.TLSCert, cfg.TLSKey = certPath, keyPath
+	if err := saveConfig(); err != nil { logger.Fatal(err) }
+	fmt.Printf("TLS certificate configured. Restart ezNAS to enable HTTPS.\nSubject: %s\nExpires: %s\nCertificate: %s\nPrivate key: %s\n", leaf.Subject.String(), leaf.NotAfter.Format(time.RFC3339), certPath, keyPath)
+	fmt.Println("Keep the private key readable only by the account running ezNAS. If another tool renews this certificate, it can keep using these paths; restart ezNAS after renewal to reload it.")
+}
+
+func printTLSStatus() {
+	if cfg.TLSCert == "" || cfg.TLSKey == "" {
+		fmt.Println("HTTPS is not configured.")
+		fmt.Println("Use 'eznas tls generate' for a self-signed certificate, or 'eznas tls use <certificate.pem> <private-key.pem>' for a certificate from a trusted CA.")
+		return
+	}
+	pair, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
+	if err != nil { fmt.Printf("TLS is configured but the certificate/key cannot be loaded: %v\n", err); os.Exit(1) }
+	if len(pair.Certificate) == 0 { fmt.Println("TLS certificate file is empty."); os.Exit(1) }
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil { fmt.Printf("Cannot parse TLS certificate: %v\n", err); os.Exit(1) }
+	fmt.Printf("HTTPS configured: yes\nSubject: %s\nDNS names: %s\nIP addresses: %s\nValid from: %s\nExpires: %s\nCertificate file: %s\nPrivate key file: %s\n", leaf.Subject.String(), strings.Join(leaf.DNSNames, ", "), strings.Join(ipStrings(leaf.IPAddresses), ", "), leaf.NotBefore.Format(time.RFC3339), leaf.NotAfter.Format(time.RFC3339), cfg.TLSCert, cfg.TLSKey)
+	if time.Now().After(leaf.NotAfter) { fmt.Println("WARNING: certificate is expired.") } else if time.Until(leaf.NotAfter) < 30*24*time.Hour { fmt.Println("WARNING: certificate expires in less than 30 days.") }
+}
+
+func ipStrings(ips []net.IP) []string {
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips { out = append(out, ip.String()) }
+	return out
+}
+
 func generateTLSCertificate() {
 	dir:=filepath.Dir(cfgPath);if err:=os.MkdirAll(dir,0700);err!=nil{logger.Fatal(err)}
 	certPath:=filepath.Join(dir,"tls-cert.pem");keyPath:=filepath.Join(dir,"tls-key.pem")
