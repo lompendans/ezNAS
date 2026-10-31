@@ -147,3 +147,52 @@ func TestRevokeShareRemovesPersistedRecord(t *testing.T) {
 		t.Fatal("share record remains after revocation")
 	}
 }
+
+func TestCreateShareReturnsSecretLinkAndDoesNotPersistToken(t *testing.T) {
+	oldCfg, oldCfgPath, oldShares := cfg, cfgPath, shares
+	defer func() { cfg, cfgPath, shares = oldCfg, oldCfgPath, oldShares }()
+	root := t.TempDir()
+	cfg = Config{Storage: root}
+	cfgPath = filepath.Join(t.TempDir(), "config.json")
+	shares = make(map[string]ShareRecord)
+	filePath := filepath.Join(root, "family.txt")
+	if err := os.WriteFile(filePath, []byte("hello family"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/shares", bytes.NewBufferString(`{"path":"family.txt","expiresInHours":24}`))
+	rec := httptest.NewRecorder()
+	createShare(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		URL string `json:"url"`
+		Share ShareInfo `json:"share"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(response.URL, "/share/") {
+		t.Fatalf("unexpected share URL %q", response.URL)
+	}
+	token := strings.TrimPrefix(response.URL, "/share/")
+	if len(token) != 43 {
+		t.Fatalf("unexpected token length %d", len(token))
+	}
+
+	store, err := os.ReadFile(shareStorePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(store, []byte(token)) {
+		t.Fatal("raw share token must not be persisted")
+	}
+
+	download := httptest.NewRequest(http.MethodGet, response.URL, nil)
+	downloadRec := httptest.NewRecorder()
+	publicShareHandler(downloadRec, download)
+	if downloadRec.Code != http.StatusOK || downloadRec.Body.String() != "hello family" {
+		t.Fatalf("shared download status=%d body=%q", downloadRec.Code, downloadRec.Body.String())
+	}
+}
