@@ -10,7 +10,10 @@ ezNAS is a lightweight file server with a browser-based file manager. It is desi
 
 - Go server with the web UI embedded in the executable.
 - Windows and Linux builds (amd64 and arm64).
-- Browse folders, upload and download files, create folders, rename and delete items.
+- Browse folders, upload and download files, create folders, rename items, and move deleted items to a recoverable recycle bin.
+- Restore recycle-bin items or permanently empty the recycle bin.
+- Create and download ZIP backups of the storage directory from the web UI.
+- Optional built-in HTTPS/TLS using a local self-signed certificate, or use a trusted HTTPS reverse proxy.
 - Search file and folder names.
 - Mandatory password gate: first run generates a one-time high-entropy password; users can set their own with `eznas password set`.
 - Configurable host, port and storage directory through a JSON config.
@@ -56,6 +59,23 @@ go build -o eznas.exe .
 ```
 
 The web interface is available at `http://localhost:8080` by default. On a private LAN, use the host machine's LAN address and ensure the network firewall allows access only where you intend.
+
+## Recycle bin, backups, and HTTPS
+
+### Recycle bin
+Deleting a file or folder moves it to a hidden `.eznas-trash` directory inside the configured storage root. Use the web UI's **Recycle bin** view to restore items or empty the bin permanently. Restoring requires that the original path is available; ezNAS will not overwrite an existing file or folder.
+
+### Backups
+Open **Backups** and select **Create backup** to make a ZIP snapshot of the configured storage directory. Backups are stored in the ezNAS config directory under `backups` by default (or the configured `backup_dir`) and can be downloaded from the UI. The recycle bin is excluded. Keep a copy on another disk or device: a backup on the same drive does not protect against drive failure. Backups can be large and require enough free space.
+
+### HTTPS / TLS
+By default, ezNAS serves HTTP. For a local self-signed certificate, stop ezNAS and run:
+
+```sh
+eznas tls generate
+```
+
+Restart ezNAS. The command writes a certificate and private key into the config directory and updates the configuration to use them. Browsers will show a trust warning until the certificate is trusted; this is expected for self-signed certificates. For a trusted certificate on a LAN or public domain, use a certificate from a trusted CA or put ezNAS behind a properly configured HTTPS reverse proxy. Do not expose an HTTP-only instance to untrusted networks.
 
 ## Commands
 
