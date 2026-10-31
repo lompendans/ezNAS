@@ -111,6 +111,15 @@ eznas help        Show commands
 
 Password protection is always enabled. On the first run, ezNAS generates a strong random password and prints it once in the terminal; save it before closing the terminal. To set or change the password, stop ezNAS and run `eznas password set`, then restart the server. The current password prompt displays typed characters, so do this where others cannot see your terminal.
 
+
+## Sharing files with family and friends
+
+Select **Share** beside a file in the web file manager and choose an expiry of 24 hours, 7 days, or 30 days. ezNAS generates a cryptographically random, unguessable link. The link allows a download of that single file only; it does not grant access to the file manager, other folders, uploads, or backups. The raw link is shown only once at creation time, so copy it then. Open **Shared links** to see active links and revoke any of them immediately. Expired links are rejected automatically.
+
+Share records are stored in `shares.json` beside the ezNAS configuration, with only a SHA-256 digest of each secret token. If a shared file is deleted, moved, replaced, or modified, its old link stops working. Folder sharing and separate family-member accounts/permissions are not included in this first sharing release.
+
+For a home/family setup, keep ezNAS on a private LAN, use HTTPS, and share links only with people you trust. A share link is a bearer credential: anyone who receives or forwards it can download that file. Do not post private links publicly.
+
 ## Updating
 
 The web interface checks GitHub for the latest stable release on startup and periodically. If a newer version is available, it shows an update banner.
@@ -151,8 +160,10 @@ Use an absolute storage path for a durable installation. The default storage dir
 
 - Password protection is mandatory and enabled on first run. Keep the generated password private and change it to a strong unique password if desired.
 - If TLS is not configured, the server uses HTTP. Keep it on a trusted LAN or put it behind a properly configured HTTPS reverse proxy. Do not port-forward an HTTP-only instance directly to the internet.
-- Password sessions are in-memory and expire after 12 hours; restarting the server invalidates sessions.
-- Deleting files is permanent. There is no recycle bin or backup system yet.
+- Password sessions are in-memory and expire after 12 hours; restarting the server invalidates sessions. Failed logins are rate-limited per client IP, and browser write requests are checked for same-origin requests.
+- A single ezNAS administrator password protects the web file manager. Share links are separate, high-entropy bearer links that are read-only, expire within 30 days, and can be revoked. Anyone who obtains a link can download that one file until it expires or is revoked; share links are not a substitute for private account permissions.
+- The recycle bin is recoverable but lives on the same storage device. Backups are also local by default; copy them to another physical device for disaster recovery.
+- ezNAS limits simultaneous uploads and backups to reduce resource contention on older hardware. Very large uploads and backups still require sufficient free disk space.
 - Keep independent backups of important data.
 - Review this project's security posture before using it for sensitive data.
 
