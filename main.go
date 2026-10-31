@@ -351,6 +351,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet { writeJSON(w,200,map[string]any{"passwordRequired":cfg.PasswordHash!=""}); return }
 	if r.Method != http.MethodPost { methodNotAllowed(w); return }
+	if !originAllowed(r) { writeJSON(w, http.StatusForbidden, map[string]string{"error":"cross-origin request blocked"}); return }
 	if allowed, retry := loginAttemptAllowed(r.RemoteAddr); !allowed {
 		seconds := int(retry.Seconds())
 		if seconds < 1 { seconds = 1 }
