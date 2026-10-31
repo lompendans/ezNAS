@@ -5,7 +5,7 @@ param(
   [Parameter(Mandatory=$true)][int]$ParentPid
 )
 $ErrorActionPreference = 'Stop'
-$Log = Join-Path (Split-Path -Parent $Staged) 'update.log'
+$Log = Join-Path $ConfigDir 'update.log'
 try { Start-Transcript -Path $Log -Append | Out-Null } catch {}
 $Backup = "$Target.eznas-backup"
 $PidFile = Join-Path $ConfigDir 'eznas.pid'
