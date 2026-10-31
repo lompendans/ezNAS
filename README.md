@@ -13,7 +13,7 @@ ezNAS is a lightweight file server with a browser-based file manager. It is desi
 - Browse folders, upload and download files, create folders, rename items, and move deleted items to a recoverable recycle bin.
 - Restore recycle-bin items or permanently empty the recycle bin.
 - Create and download ZIP backups of the storage directory from the web UI.
-- Optional built-in HTTPS/TLS using a local self-signed certificate, or use a trusted HTTPS reverse proxy.
+- Optional built-in HTTPS/TLS with self-signed or externally issued certificates; trusted HTTPS reverse-proxy deployment is also supported.
 - Search file and folder names.
 - Mandatory password gate: first run generates a one-time high-entropy password; users can set their own with `eznas password set`.
 - Configurable host, port and storage directory through a JSON config.
@@ -75,7 +75,18 @@ By default, ezNAS serves HTTP. For a local self-signed certificate, stop ezNAS a
 eznas tls generate
 ```
 
-Restart ezNAS. The command writes a certificate and private key into the config directory and updates the configuration to use them. Browsers will show a trust warning until the certificate is trusted; this is expected for self-signed certificates. For a trusted certificate on a LAN or public domain, use a certificate from a trusted CA or put ezNAS behind a properly configured HTTPS reverse proxy. Do not expose an HTTP-only instance to untrusted networks.
+Restart ezNAS. The command writes a certificate and private key into the config directory and updates the configuration to use them. Browsers will show a trust warning until the certificate is trusted; this is expected for self-signed certificates.
+
+To use a certificate issued by a trusted CA, including a Let's Encrypt certificate issued by Certbot or another ACME client, stop ezNAS and point it at the certificate and matching private key:
+
+```sh
+eznas tls use /path/to/fullchain.pem /path/to/privkey.pem
+eznas tls status
+```
+
+Use the actual paths on your operating system. The certificate and key must form a valid, currently valid pair. Restart ezNAS after configuring the pair. Keep the private key readable only by the account running ezNAS. If Certbot or another ACME client renews the certificate at those same paths, restart ezNAS after renewal so Go reloads the renewed certificate.
+
+Alternatively, put ezNAS behind a properly configured HTTPS reverse proxy such as Caddy, which can obtain and renew Let's Encrypt certificates automatically. In that setup, keep ezNAS bound to a trusted local interface and configure the proxy to forward traffic to it. Do not expose an HTTP-only instance to untrusted networks. **Automatic Let's Encrypt issuance and renewal directly inside ezNAS is not implemented yet**; use an ACME client or reverse proxy for that workflow.
 
 ## Commands
 
@@ -131,7 +142,7 @@ Use an absolute storage path for a durable installation. The default storage dir
 ## Security notes
 
 - Password protection is mandatory and enabled on first run. Keep the generated password private and change it to a strong unique password if desired.
-- The current HTTP server does not provide TLS. Keep it on a trusted LAN or put it behind a properly configured HTTPS reverse proxy. Do not port-forward it directly to the internet.
+- If TLS is not configured, the server uses HTTP. Keep it on a trusted LAN or put it behind a properly configured HTTPS reverse proxy. Do not port-forward an HTTP-only instance directly to the internet.
 - Password sessions are in-memory and expire after 12 hours; restarting the server invalidates sessions.
 - Deleting files is permanent. There is no recycle bin or backup system yet.
 - Keep independent backups of important data.
