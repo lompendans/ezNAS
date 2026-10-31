@@ -1,8 +1,8 @@
 # ezNAS
 
-**Turn an old Windows or Linux computer into a simple, self-hosted NAS.**
+**Turn an old computer into your personal or family network NAS.**
 
-ezNAS is a lightweight file server with a browser-based file manager. It is designed to keep your files on your own device, with no account or cloud service required.
+ezNAS is a lightweight, self-hosted file hub that repurposes an old Windows PC, Linux machine, mini PC, or single-board computer as shared storage on your home network. Your files stay on the device you choose; ezNAS does not require a cloud account or send files to a hosted storage provider.
 
 > **Development status:** early development. Do not expose an internet-facing instance or store your only copy of important files in ezNAS yet. Review the security notes below.
 
@@ -15,6 +15,9 @@ ezNAS is a lightweight file server with a browser-based file manager. It is desi
 - Create and download ZIP backups of the storage directory from the web UI.
 - Optional built-in HTTPS/TLS with self-signed or externally issued certificates; trusted HTTPS reverse-proxy deployment is also supported.
 - Search file and folder names.
+- Create expiring, revocable, read-only download links for individual files.
+- Rate-limit failed password attempts, reject cross-origin browser writes, and persist share secrets as hashes rather than raw tokens.
+- Limit concurrent uploads and backups to avoid overwhelming low-power devices.
 - Mandatory password gate: first run generates a one-time high-entropy password; users can set their own with `eznas password set`.
 - Configurable host, port and storage directory through a JSON config.
 - Upload limit of 10 GiB per file.
