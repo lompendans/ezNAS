@@ -319,7 +319,7 @@ func apiHandler(w http.ResponseWriter,r *http.Request) {
 	case "/api/storage":
 		if r.Method!=http.MethodGet { methodNotAllowed(w); return }; storageInfo(w)
 	case "/api/update":
-		if r.Method != http.MethodPost { methodNotAllowed(w,r); return }
+		if r.Method != http.MethodPost { methodNotAllowed(w); return }
 		updateLaunched = false
 		updateStatusMessage = ""
 		if err := stageLatestUpdate(); err != nil { writeJSON(w, 502, map[string]string{"error": err.Error()}); return }
