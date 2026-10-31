@@ -166,9 +166,12 @@ func printConfig() {
 }
 func printStorage() {
 	if err := os.MkdirAll(cfg.Storage, 0750); err != nil { logger.Fatal(err) }
-	var s syscall.Statfs_t
-	if err := syscall.Statfs(cfg.Storage, &s); err != nil { fmt.Printf("Storage path: %s\nFree-space reporting is unavailable on this platform: %v\n", cfg.Storage, err); return }
-	fmt.Printf("Storage path: %s\nFree: %.2f GiB\nTotal: %.2f GiB\n", cfg.Storage, float64(s.Bavail)*float64(s.Bsize)/(1<<30), float64(s.Blocks)*float64(s.Bsize)/(1<<30))
+	info, err := getStorageCapacity(cfg.Storage)
+	if err != nil {
+		fmt.Printf("Storage path: %s\nFree-space reporting is unavailable on this platform: %v\n", cfg.Storage, err)
+		return
+	}
+	fmt.Printf("Storage path: %s\nFree: %.2f GiB\nTotal: %.2f GiB\n", cfg.Storage, float64(info.Free)/(1<<30), float64(info.Total)/(1<<30))
 }
 func displayAddress(host string, port int) string {
 	if host == "0.0.0.0" || host == "::" || host == "" { return "localhost:" + strconv.Itoa(port) }
