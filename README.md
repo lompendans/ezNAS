@@ -101,6 +101,22 @@ Use an absolute storage path for a durable installation. The default storage dir
 
 ## Windows Network and native file sharing
 
+Windows users can configure native File Explorer discovery and SMB sharing with the elevated PowerShell setup script in the repository:
+
+```powershell
+# Open PowerShell as Administrator in the downloaded/cloned repository folder
+.\setup-network.ps1
+```
+
+The script uses Windows' built-in SMB server, creates the `ezNAS` share for the current Windows account, enables the Windows discovery services where available, and creates firewall rules scoped to the **Private** network profile and local subnet. It asks for the absolute storage path and web port, and saves the settings for ezNAS. Restart ezNAS after running it.
+
+- The web interface uses the ezNAS password.
+- File Explorer SMB access uses the Windows account credentials granted share access; these are separate authentication systems. This avoids anonymous SMB access, but a user who has Windows share credentials can access the files without logging in to the web UI.
+- Set your LAN network profile to **Private** and enable Network discovery in Windows Settings if needed. Do not enable SMB access on Public networks or forward TCP 445 from the internet.
+- This setup script requires Windows editions with SMB server cmdlets and Administrator rights. It has not yet been tested on every Windows edition.
+
+The current HTTP server does not itself publish a native SMB share; the setup script configures Windows' native SMB service for this. On Linux, native SMB sharing still needs a Samba-specific setup path.
+
 The current release serves the web file manager over HTTP. It does not yet publish a native SMB share or guarantee that ezNAS appears in File Explorer's Network view. Those are separate features: Windows-compatible discovery is needed for visibility, and SMB needs its own access-control design so native file sharing cannot bypass ezNAS's password. Do not manually share the storage directory through Windows or Samba unless you have separately configured and secured those share permissions.
 
 ## Development
