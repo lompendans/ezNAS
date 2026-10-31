@@ -54,6 +54,8 @@ type FileInfo struct {
 	Modified time.Time `json:"modified"`
 }
 
+var shutdownRequests = make(chan struct{}, 1)
+
 var (
 	cfg Config
 	cfgPath string
@@ -111,7 +113,7 @@ func main() {
 	}()
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt)
-	<-ch
+	select { case <-ch: case <-shutdownRequests: }
 	ctx, cancel := contextWithTimeout(10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil { logger.Printf("shutdown: %v", err) }
@@ -316,6 +318,14 @@ func apiHandler(w http.ResponseWriter,r *http.Request) {
 		if r.Method!=http.MethodGet { methodNotAllowed(w); return }; searchFiles(w,r)
 	case "/api/storage":
 		if r.Method!=http.MethodGet { methodNotAllowed(w); return }; storageInfo(w)
+	case "/api/update":
+		if r.Method != http.MethodPost { methodNotAllowed(w,r); return }
+		updateLaunched = false
+		updateStatusMessage = ""
+		if err := stageLatestUpdate(); err != nil { writeJSON(w, 502, map[string]string{"error": err.Error()}); return }
+		if !updateLaunched { writeJSON(w, 200, map[string]any{"ok": true, "updated": false, "message": updateStatusMessage}); return }
+		writeJSON(w, 202, map[string]any{"ok": true, "updated": true, "message": updateStatusMessage})
+		go func(){ time.Sleep(300*time.Millisecond); select { case shutdownRequests <- struct{}{}: default: } }()
 	default: http.NotFound(w,r)
 	}
 }
