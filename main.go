@@ -621,6 +621,19 @@ func createBackup(w http.ResponseWriter,r *http.Request) {
 		writeJSON(w,400,map[string]string{"error":"backup_dir must be outside the storage directory to prevent recursive backups"}); return
 	}
 	if err:=os.MkdirAll(dir,0700);err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup directory"});return}
+	// Resolve symlinks after creation so a backup directory that looks outside
+	// the storage tree but redirects back into it cannot create recursive ZIPs.
+	resolvedRoot, rootErr := filepath.EvalSymlinks(root)
+	resolvedDir, dirErr := filepath.EvalSymlinks(dir)
+	if rootErr != nil || dirErr != nil {
+		writeJSON(w,500,map[string]string{"error":"cannot safely resolve storage or backup directory"})
+		return
+	}
+	resolvedRel, relErr := filepath.Rel(resolvedRoot, resolvedDir)
+	if relErr == nil && (resolvedRel == "." || resolvedRel == ".." || !strings.HasPrefix(resolvedRel, ".."+string(filepath.Separator))) {
+		writeJSON(w,400,map[string]string{"error":"backup_dir must resolve outside the storage directory to prevent recursive backups"})
+		return
+	}
 	name:="eznas-backup-"+time.Now().UTC().Format("20060102-150405.000000000")+"Z.zip";target:=filepath.Join(dir,name);tmp:=target+".tmp"
 	f,err:=os.OpenFile(tmp,os.O_CREATE|os.O_EXCL|os.O_WRONLY,0600);if err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup file"});return}
 	zw:=zip.NewWriter(f)
