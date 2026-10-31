@@ -83,6 +83,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Unknown command: %s\n", args[0]); printHelp(); os.Exit(2)
 		}
 	}
+	if err := ensurePasswordConfigured(); err != nil { logger.Fatalf("password setup: %v", err) }
 	if err := os.MkdirAll(cfg.Storage, 0750); err != nil { logger.Fatalf("create storage: %v", err) }
 	writePID()
 	defer removePID()
@@ -105,7 +106,6 @@ func main() {
 	}
 	go func() {
 		logger.Printf("web interface: http://%s", displayAddress(cfg.Host, cfg.Port))
-		if cfg.PasswordHash == "" { logger.Printf("WARNING: password protection is disabled") }
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) { logger.Fatalf("server: %v", err) }
 	}()
 	ch := make(chan os.Signal, 1)
@@ -156,7 +156,7 @@ func printHelp() {
 	fmt.Println("  eznas stop         Stop a server started with eznas")
 	fmt.Println("  eznas config       Show configuration location and safe settings")
 	fmt.Println("  eznas storage      Show storage path and free space")
-	fmt.Println("  eznas password set Enable or change optional password protection")
+	fmt.Println("  eznas password set Set or change the required password")
 	fmt.Println("  eznas version      Print version")
 	fmt.Println("  eznas help         Show this help")
 }
@@ -194,6 +194,25 @@ func checkStatus() {
 	defer r.Body.Close()
 	fmt.Printf("ezNAS is responding: %s\n", url)
 }
+func ensurePasswordConfigured() error {
+	if cfg.PasswordHash != "" { return nil }
+	// Secure first-run default: generate a high-entropy password and persist only its salted hash.
+	secret := make([]byte, 24)
+	if _, err := rand.Read(secret); err != nil { return err }
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil { return err }
+	password := base64.RawURLEncoding.EncodeToString(secret)
+	cfg.PasswordSalt = base64.StdEncoding.EncodeToString(salt)
+	cfg.PasswordHash = passwordHash(password, salt)
+	if err := saveConfig(); err != nil { return err }
+	fmt.Println()
+	fmt.Println("SECURITY: ezNAS requires a password. A one-time password was generated for this first run:")
+	fmt.Println(password)
+	fmt.Println("Save it now. To change it later, stop ezNAS and run: eznas password set")
+	fmt.Println()
+	return nil
+}
+
 func setPassword() {
 	fmt.Print("New password (input is visible in this basic terminal prompt): ")
 	var p string
