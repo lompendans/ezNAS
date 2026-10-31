@@ -74,6 +74,7 @@ func main() {
 		case "storage": printStorage(); return
 		case "status": checkStatus(); return
 		case "stop": stopServer(); return
+		case "update": runUpdate(); return
 		case "password":
 			if len(args) > 1 && args[1] == "set" { setPassword(); return }
 			fmt.Println("Usage: eznas password set"); os.Exit(2)
@@ -157,6 +158,7 @@ func printHelp() {
 	fmt.Println("  eznas config       Show configuration location and safe settings")
 	fmt.Println("  eznas storage      Show storage path and free space")
 	fmt.Println("  eznas password set Set or change the required password")
+	fmt.Println("  eznas update       Download and verify the latest stable release")
 	fmt.Println("  eznas version      Print version")
 	fmt.Println("  eznas help         Show this help")
 }
