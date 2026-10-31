@@ -386,6 +386,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 func logoutHandler(w http.ResponseWriter,r *http.Request) {
 	if r.Method != http.MethodPost { methodNotAllowed(w); return }
+	if !originAllowed(r) { writeJSON(w, http.StatusForbidden, map[string]string{"error":"cross-origin request blocked"}); return }
 	if c,err:=r.Cookie("eznas_session"); err==nil { sessionMu.Lock(); delete(sessions,c.Value); sessionMu.Unlock() }
 	http.SetCookie(w,&http.Cookie{Name:"eznas_session",Value:"",Path:"/",HttpOnly:true,SameSite:http.SameSiteStrictMode,Secure:requestIsSecure(r),MaxAge:-1})
 	writeJSON(w,200,map[string]bool{"ok":true})
