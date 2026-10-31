@@ -117,8 +117,15 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 	go func() {
-		logger.Printf("web interface: http://%s", displayAddress(cfg.Host, cfg.Port))
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) { logger.Fatalf("server: %v", err) }
+		if cfg.TLSCert != "" || cfg.TLSKey != "" {
+			if cfg.TLSCert == "" || cfg.TLSKey == "" { logger.Fatalf("both tls_cert and tls_key must be configured") }
+			logger.Printf("web interface: https://%s", displayAddress(cfg.Host, cfg.Port))
+			if err := server.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey); err != nil && !errors.Is(err, http.ErrServerClosed) { logger.Fatalf("server: %v", err) }
+		} else {
+			logger.Printf("web interface: http://%s", displayAddress(cfg.Host, cfg.Port))
+			logger.Printf("WARNING: HTTPS is disabled. Configure TLS or use a trusted HTTPS reverse proxy for remote access.")
+			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) { logger.Fatalf("server: %v", err) }
+		}
 	}()
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt)
@@ -294,7 +301,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	cfgMu.RLock(); c := cfg; cfgMu.RUnlock()
 	hostname, _ := os.Hostname()
 	address := hostname + ":" + strconv.Itoa(c.Port)
-	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":version,"passwordRequired":c.PasswordHash!="","storage":c.Storage,"host":c.Host,"port":c.Port,"hostname":hostname,"address":address,"os":runtime.GOOS})
+	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":version,"passwordRequired":c.PasswordHash!="","storage":c.Storage,"host":c.Host,"port":c.Port,"hostname":hostname,"address":address,"os":runtime.GOOS,"https":cfg.TLSCert!="" && cfg.TLSKey!="","backupDir":cfg.BackupDir})
 }
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet { writeJSON(w,200,map[string]any{"passwordRequired":cfg.PasswordHash!=""}); return }
@@ -328,6 +335,18 @@ func apiHandler(w http.ResponseWriter,r *http.Request) {
 		if r.Method!=http.MethodPost { methodNotAllowed(w); return }; renamePath(w,r)
 	case "/api/delete":
 		if r.Method!=http.MethodPost { methodNotAllowed(w); return }; deletePath(w,r)
+	case "/api/trash":
+		if r.Method != http.MethodGet { methodNotAllowed(w); return }; listTrash(w,r)
+	case "/api/trash/restore":
+		if r.Method != http.MethodPost { methodNotAllowed(w); return }; restoreTrash(w,r)
+	case "/api/trash/purge":
+		if r.Method != http.MethodPost { methodNotAllowed(w); return }; purgeTrash(w,r)
+	case "/api/backups":
+		if r.Method == http.MethodGet { listBackups(w,r); return }
+		if r.Method == http.MethodPost { createBackup(w,r); return }
+		methodNotAllowed(w)
+	case "/api/backups/download":
+		if r.Method != http.MethodGet { methodNotAllowed(w); return }; downloadBackup(w,r)
 	case "/api/search":
 		if r.Method!=http.MethodGet { methodNotAllowed(w); return }; searchFiles(w,r)
 	case "/api/storage":
@@ -421,7 +440,8 @@ func deletePath(w http.ResponseWriter,r *http.Request) {
 	p,err:=safePath(in.Path);if err!=nil{writeJSON(w,400,map[string]string{"error":err.Error()});return}
 	cfgMu.RLock();root:=cfg.Storage;cfgMu.RUnlock()
 	if p==root{writeJSON(w,400,map[string]string{"error":"cannot delete the storage root"});return}
-	if err=os.RemoveAll(p);err!=nil{writeJSON(w,400,map[string]string{"error":err.Error()});return};writeJSON(w,200,map[string]bool{"ok":true})
+	if err = moveToTrash(p, root); err != nil { writeJSON(w,400,map[string]string{"error":err.Error()}); return }
+	writeJSON(w,200,map[string]any{"ok":true,"message":"Moved to recycle bin"})
 }
 func searchFiles(w http.ResponseWriter,r *http.Request) {
 	q:=strings.TrimSpace(r.URL.Query().Get("q"));if q==""{writeJSON(w,200,map[string]any{"items":[]FileInfo{}});return}
