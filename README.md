@@ -18,6 +18,7 @@ ezNAS is a lightweight file server with a browser-based file manager. It is desi
 - Path traversal checks and safeguards against symlinks escaping the storage directory.
 - Linux storage-capacity display.
 - One-command installers that download published releases and verify SHA-256 checksums.
+- Update checks in the web UI, plus `eznas update` to download the latest stable release, verify its SHA-256 checksum, and stage the executable without touching the currently installed binary.
 - Windows installer adds ezNAS to the current user's PATH and can optionally start it automatically at sign-in.
 
 ## Install
@@ -70,6 +71,18 @@ eznas help        Show commands
 ```
 
 Password protection is always enabled. On the first run, ezNAS generates a strong random password and prints it once in the terminal; save it before closing the terminal. To set or change the password, stop ezNAS and run `eznas password set`, then restart the server. The current password prompt displays typed characters, so do this where others cannot see your terminal.
+
+## Updating
+
+The web interface checks GitHub for the latest stable release on startup and periodically. If a newer version is available, it shows a link to the release page.
+
+You can also run:
+
+```sh
+eznas update
+```
+
+This downloads the matching Windows or Linux release archive and `checksums.txt`, verifies the archive's SHA-256 hash, extracts the expected executable, and stages it under the ezNAS user configuration directory at `updates/<release-tag>/`. **This phase does not replace the installed executable or restart a running server.** Keep using the current installation until the safe apply/restart helper is implemented in a later phase. If the release is already installed, the command reports that and exits.
 
 ## Configuration
 
