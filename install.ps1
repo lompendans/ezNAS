@@ -30,6 +30,18 @@ try {
 
     Write-Host "ezNAS $($Release.tag_name) installed to $InstallDir" -ForegroundColor Green
     Write-Host "PATH configured for your Windows user." -ForegroundColor Green
+
+    Write-Host ""
+    $configureHttps = Read-Host "Configure HTTPS and trust the local certificate for this Windows user? [y/N]"
+    if ($configureHttps -match "^(y|yes)$") {
+        & (Join-Path $InstallDir "eznas.exe") tls generate
+        if ($LASTEXITCODE -ne 0) { throw "Could not generate the ezNAS TLS certificate." }
+        & (Join-Path $InstallDir "eznas.exe") tls trust
+        if ($LASTEXITCODE -ne 0) { Write-Warning "The certificate was generated but could not be trusted automatically. Run 'eznas tls trust' later." }
+        else { Write-Host "HTTPS configured. Restart ezNAS after setup; use https://localhost:8080 on this computer." -ForegroundColor Green }
+    } else {
+        Write-Host "HTTPS setup skipped. You can configure it later with 'eznas tls generate' then 'eznas tls trust'."
+    }
     Write-Host "You can run: eznas help"
 
     $autoStart = Read-Host "Start ezNAS automatically whenever you sign in to Windows? [y/N]"
