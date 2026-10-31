@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/sha256"
+	"context"
+	"net/url"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"embed"
 )
@@ -106,7 +107,7 @@ func main() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) { logger.Fatalf("server: %v", err) }
 	}()
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(ch, os.Interrupt)
 	<-ch
 	ctx, cancel := contextWithTimeout(10*time.Second)
 	defer cancel()
@@ -375,12 +376,9 @@ func searchFiles(w http.ResponseWriter,r *http.Request) {
 }
 func storageInfo(w http.ResponseWriter) {
 	cfgMu.RLock();root:=cfg.Storage;cfgMu.RUnlock()
-	var total,free uint64
-	if runtime.GOOS=="windows" { writeJSON(w,200,map[string]any{"path":root,"freeBytes":nil,"totalBytes":nil,"note":"Disk capacity reporting is not yet available on Windows."});return }
-	var s syscall.Statfs_t
-	if err:=syscall.Statfs(root,&s);err!=nil{writeJSON(w,200,map[string]any{"path":root,"note":"Disk capacity unavailable"});return}
-	total=s.Blocks*uint64(s.Bsize);free=s.Bavail*uint64(s.Bsize)
-	writeJSON(w,200,map[string]any{"path":root,"freeBytes":free,"totalBytes":total,"usedBytes":total-free})
+	info, err := getStorageCapacity(root)
+	if err != nil { writeJSON(w,200,map[string]any{"path":root,"note":"Disk capacity unavailable on this platform"}); return }
+	writeJSON(w,200,map[string]any{"path":root,"freeBytes":info.Free,"totalBytes":info.Total,"usedBytes":info.Total-info.Free})
 }
 func writeJSON(w http.ResponseWriter,status int,v any){w.Header().Set("Content-Type","application/json; charset=utf-8");w.WriteHeader(status);_ = json.NewEncoder(w).Encode(v)}
 func methodNotAllowed(w http.ResponseWriter){writeJSON(w,http.StatusMethodNotAllowed,map[string]string{"error":"method not allowed"})}
