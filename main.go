@@ -255,7 +255,9 @@ func securityHeaders(next http.Handler) http.Handler {
 func statusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { methodNotAllowed(w); return }
 	cfgMu.RLock(); c := cfg; cfgMu.RUnlock()
-	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":version,"passwordRequired":c.PasswordHash!="","storage":c.Storage,"host":c.Host,"port":c.Port,"os":runtime.GOOS})
+	hostname, _ := os.Hostname()
+	address := hostname + ":" + strconv.Itoa(c.Port)
+	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":version,"passwordRequired":c.PasswordHash!="","storage":c.Storage,"host":c.Host,"port":c.Port,"hostname":hostname,"address":address,"os":runtime.GOOS})
 }
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet { writeJSON(w,200,map[string]any{"passwordRequired":cfg.PasswordHash!=""}); return }
