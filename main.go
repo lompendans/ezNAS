@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/sha256"
+	"crypto/hmac"
 	"context"
 	"net/url"
 	"encoding/base64"
@@ -17,7 +18,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -31,6 +31,8 @@ import (
 
 //go:embed web/*
 var webFiles embed.FS
+
+var version = "dev"
 
 const appName = "ezNAS"
 const defaultPort = "8080"
@@ -67,7 +69,7 @@ func main() {
 	if len(args) > 0 {
 		switch args[0] {
 		case "help", "--help", "-h": printHelp(); return
-		case "version", "--version": fmt.Println("ezNAS dev"); return
+		case "version", "--version": fmt.Println("ezNAS " + version); return
 		case "config": printConfig(); return
 		case "storage": printStorage(); return
 		case "status": checkStatus(); return
@@ -201,10 +203,20 @@ func setPassword() {
 	fmt.Println("Password protection enabled. Restart ezNAS to apply.")
 }
 func passwordHash(p string, salt []byte) string {
-	v := append(append([]byte{}, salt...), []byte(p)...)
-	h := sha256.Sum256(v)
-	out := h[:]
-	for i:=0; i<200000; i++ { x := sha256.Sum256(append(append([]byte{}, out...), salt...)); out = x[:] }
+	// PBKDF2-HMAC-SHA256, 200,000 iterations, one 32-byte output block.
+	mac := hmac.New(sha256.New, []byte(p))
+	var counter [4]byte
+	counter[3] = 1
+	mac.Write(salt)
+	mac.Write(counter[:])
+	u := mac.Sum(nil)
+	out := append([]byte(nil), u...)
+	for i := 1; i < 200000; i++ {
+		mac = hmac.New(sha256.New, []byte(p))
+		mac.Write(u)
+		u = mac.Sum(nil)
+		for j := range out { out[j] ^= u[j] }
+	}
 	return hex.EncodeToString(out)
 }
 func checkPassword(p string) bool {
@@ -240,7 +252,7 @@ func securityHeaders(next http.Handler) http.Handler {
 func statusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { methodNotAllowed(w); return }
 	cfgMu.RLock(); c := cfg; cfgMu.RUnlock()
-	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":"dev","passwordRequired":c.PasswordHash!="","storage":c.Storage,"host":c.Host,"port":c.Port,"os":runtime.GOOS})
+	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":version,"passwordRequired":c.PasswordHash!="","storage":c.Storage,"host":c.Host,"port":c.Port,"os":runtime.GOOS})
 }
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet { writeJSON(w,200,map[string]any{"passwordRequired":cfg.PasswordHash!=""}); return }
