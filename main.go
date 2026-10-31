@@ -441,6 +441,10 @@ func apiHandler(w http.ResponseWriter,r *http.Request) {
 	default: http.NotFound(w,r)
 	}
 }
+func isInternalStorageEntry(name string) bool {
+	return name == ".eznas-trash" || strings.HasPrefix(name, ".eznas-upload-")
+}
+
 func cleanRelative(p string) (string,error) {
 	p = strings.ReplaceAll(p,"\\","/")
 	p = strings.TrimSpace(p)
@@ -471,7 +475,7 @@ func listFiles(w http.ResponseWriter,r *http.Request) {
 	p,err:=safePath(r.URL.Query().Get("path")); if err!=nil { writeJSON(w,400,map[string]string{"error":err.Error()});return }
 	entries,err:=os.ReadDir(p); if err!=nil { writeJSON(w,400,map[string]string{"error":err.Error()});return }
 	out:=make([]FileInfo,0,len(entries))
-	for _,e:=range entries { if e.Name()==".eznas-trash" { continue }; info,err:=e.Info();if err!=nil{continue}; rel,_:=filepath.Rel(cfg.Storage,filepath.Join(p,e.Name())); out=append(out,FileInfo{Name:e.Name(),Path:filepath.ToSlash(rel),Directory:e.IsDir(),Size:info.Size(),Modified:info.ModTime()}) }
+	for _,e:=range entries { if isInternalStorageEntry(e.Name()) { continue }; info,err:=e.Info();if err!=nil{continue}; rel,_:=filepath.Rel(cfg.Storage,filepath.Join(p,e.Name())); out=append(out,FileInfo{Name:e.Name(),Path:filepath.ToSlash(rel),Directory:e.IsDir(),Size:info.Size(),Modified:info.ModTime()}) }
 	sort.Slice(out,func(i,j int)bool{if out[i].Directory!=out[j].Directory{return out[i].Directory};return strings.ToLower(out[i].Name)<strings.ToLower(out[j].Name)})
 	writeJSON(w,200,map[string]any{"path":r.URL.Query().Get("path"),"items":out})
 }
@@ -538,7 +542,11 @@ func searchFiles(w http.ResponseWriter,r *http.Request) {
 	cfgMu.RLock();root:=cfg.Storage;cfgMu.RUnlock();out:=[]FileInfo{};limit:=500
 	err:=filepath.WalkDir(root,func(p string,d fs.DirEntry,err error)error{
 		if err!=nil{return nil};if p==root{return nil}
-		if filepath.Base(p)==".eznas-trash" && d.IsDir(){return filepath.SkipDir}
+		if d.IsDir() && d.Name()==".eznas-trash" { return filepath.SkipDir }
+		if strings.HasPrefix(d.Name(), ".eznas-upload-") {
+			if d.IsDir() { return filepath.SkipDir }
+			return nil
+		}
 		if d.Type()&os.ModeSymlink!=0{return filepath.SkipDir}
 		if strings.Contains(strings.ToLower(d.Name()),strings.ToLower(q)){info,e:=d.Info();if e==nil{rel,_:=filepath.Rel(root,p);out=append(out,FileInfo{Name:d.Name(),Path:filepath.ToSlash(rel),Directory:d.IsDir(),Size:info.Size(),Modified:info.ModTime()});if len(out)>=limit{return errors.New("limit")}}}
 		return nil
@@ -642,7 +650,11 @@ func createBackup(w http.ResponseWriter,r *http.Request) {
 	err=filepath.WalkDir(root,func(p string,d fs.DirEntry,walkErr error)error{
 		if walkErr!=nil{return walkErr};if p==root{return nil}
 		rel,er:=filepath.Rel(root,p);if er!=nil{return er}
-		if rel==".eznas-trash"{if d.IsDir(){return filepath.SkipDir};return nil}
+		if rel==".eznas-trash" { if d.IsDir() { return filepath.SkipDir }; return nil }
+		if strings.HasPrefix(d.Name(), ".eznas-upload-") {
+			if d.IsDir() { return filepath.SkipDir }
+			return nil
+		}
 		if d.Type()&os.ModeSymlink!=0 {if d.IsDir(){return filepath.SkipDir};return nil}
 		fi,er:=d.Info();if er!=nil{return er}
 		h,er:=zip.FileInfoHeader(fi);if er!=nil{return er};h.Name=filepath.ToSlash(rel);if fi.IsDir(){h.Name+="/"}else{h.Method=zip.Deflate}
