@@ -37,3 +37,5 @@ main{padding-top:44px}header{align-items:flex-start;margin-bottom:36px}header h1
 .share-link-result p{margin:2px 0 0;line-height:1.6}
 #share-expiry{width:100%;padding:11px 12px;background:#101827;border:1px solid rgba(151,174,224,.2);border-radius:10px;color:#eef2ff}
 @media(max-width:520px){.share-link-result{grid-template-columns:1fr}.share-link-result button{width:100%}}
+
+.share-create{width:100%;margin-top:16px}
