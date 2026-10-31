@@ -75,6 +75,8 @@ var (
 	sessions = map[string]time.Time{}
 	sessionMu sync.Mutex
 	logger = log.New(os.Stdout, "ezNAS ", log.LstdFlags)
+	uploadSlots = make(chan struct{}, 2)
+	backupSlots = make(chan struct{}, 1)
 )
 
 func main() {
@@ -120,11 +122,13 @@ func main() {
 	}
 	if err := ensurePasswordConfigured(); err != nil { logger.Fatalf("password setup: %v", err) }
 	if err := os.MkdirAll(cfg.Storage, 0750); err != nil { logger.Fatalf("create storage: %v", err) }
+	if err := loadShareStore(); err != nil { logger.Fatalf("load share database: %v", err) }
 	writePID()
 	defer removePID()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/status", statusHandler)
 	mux.HandleFunc("/api/login", loginHandler)
+	mux.HandleFunc("/share/", publicShareHandler)
 	mux.HandleFunc("/api/logout", logoutHandler)
 	mux.Handle("/api/", authMiddleware(http.HandlerFunc(apiHandler)))
 	static, err := fs.Sub(webFiles, "web")
@@ -185,12 +189,23 @@ func loadConfig() error {
 }
 
 func saveConfig() error {
-	cfgMu.RLock(); c := cfg; cfgMu.RUnlock()
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0700); err != nil { return err }
-	b, err := json.MarshalIndent(c, "", "  "); if err != nil { return err }
-	tmp := cfgPath + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0600); err != nil { return err }
-	return os.Rename(tmp, cfgPath)
+	cfgMu.RLock()
+	c := cfg
+	cfgMu.RUnlock()
+	dir := filepath.Dir(cfgPath)
+	if err := os.MkdirAll(dir, 0700); err != nil { return err }
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil { return err }
+	tmp, err := os.CreateTemp(dir, ".config-*.tmp")
+	if err != nil { return err }
+	tmpName := tmp.Name()
+	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpName) }
+	if err := tmp.Chmod(0600); err != nil { cleanup(); return err }
+	if _, err := tmp.Write(append(data, '\n')); err != nil { cleanup(); return err }
+	if err := tmp.Sync(); err != nil { cleanup(); return err }
+	if err := tmp.Close(); err != nil { _ = os.Remove(tmpName); return err }
+	if err := os.Rename(tmpName, cfgPath); err != nil { _ = os.Remove(tmpName); return err }
+	return nil
 }
 
 func printHelp() {
@@ -308,6 +323,10 @@ func hasSession(r *http.Request) bool {
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.RLock(); enabled := cfg.PasswordHash != ""; cfgMu.RUnlock()
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions && !originAllowed(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request blocked"})
+			return
+		}
 		if !enabled || r.URL.Path == "/api/login" || r.URL.Path == "/api/status" { next.ServeHTTP(w,r); return }
 		if hasSession(r) { next.ServeHTTP(w,r); return }
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error":"authentication required"})
@@ -327,24 +346,40 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	cfgMu.RLock(); c := cfg; cfgMu.RUnlock()
 	hostname, _ := os.Hostname()
 	address := hostname + ":" + strconv.Itoa(c.Port)
-	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":version,"passwordRequired":c.PasswordHash!="","storage":c.Storage,"host":c.Host,"port":c.Port,"hostname":hostname,"address":address,"os":runtime.GOOS,"https":cfg.TLSCert!="" && cfg.TLSKey!="","backupDir":cfg.BackupDir})
+	writeJSON(w, 200, map[string]any{"name":"ezNAS","version":version,"passwordRequired":c.PasswordHash!="","host":c.Host,"port":c.Port,"hostname":hostname,"address":address,"os":runtime.GOOS,"https":c.TLSCert!="" && c.TLSKey!=""})
 }
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet { writeJSON(w,200,map[string]any{"passwordRequired":cfg.PasswordHash!=""}); return }
 	if r.Method != http.MethodPost { methodNotAllowed(w); return }
+	if allowed, retry := loginAttemptAllowed(r.RemoteAddr); !allowed {
+		seconds := int(retry.Seconds())
+		if seconds < 1 { seconds = 1 }
+		w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed login attempts; try again later"})
+		return
+	}
 	var in struct { Password string `json:"password"` }
 	if err := json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in); err != nil { writeJSON(w,400,map[string]string{"error":"invalid request"}); return }
-	if !checkPassword(in.Password) { writeJSON(w,401,map[string]string{"error":"incorrect password"}); return }
+	if !checkPassword(in.Password) {
+		recordLoginFailure(r.RemoteAddr)
+		writeJSON(w,401,map[string]string{"error":"incorrect password"})
+		return
+	}
+	clearLoginFailures(r.RemoteAddr)
 	token := make([]byte,32); if _, err := rand.Read(token); err != nil { writeJSON(w,500,map[string]string{"error":"session creation failed"}); return }
 	value := base64.RawURLEncoding.EncodeToString(token)
-	sessionMu.Lock(); sessions[value] = time.Now().Add(12*time.Hour); sessionMu.Unlock()
-	http.SetCookie(w,&http.Cookie{Name:"eznas_session",Value:value,Path:"/",HttpOnly:true,SameSite:http.SameSiteStrictMode,Secure:r.TLS!=nil,MaxAge:43200})
+	now := time.Now()
+	sessionMu.Lock()
+	for oldToken, expires := range sessions { if !expires.After(now) { delete(sessions, oldToken) } }
+	sessions[value] = now.Add(12*time.Hour)
+	sessionMu.Unlock()
+	http.SetCookie(w,&http.Cookie{Name:"eznas_session",Value:value,Path:"/",HttpOnly:true,SameSite:http.SameSiteStrictMode,Secure:requestIsSecure(r),MaxAge:43200})
 	writeJSON(w,200,map[string]bool{"ok":true})
 }
 func logoutHandler(w http.ResponseWriter,r *http.Request) {
 	if r.Method != http.MethodPost { methodNotAllowed(w); return }
 	if c,err:=r.Cookie("eznas_session"); err==nil { sessionMu.Lock(); delete(sessions,c.Value); sessionMu.Unlock() }
-	http.SetCookie(w,&http.Cookie{Name:"eznas_session",Value:"",Path:"/",HttpOnly:true,SameSite:http.SameSiteStrictMode,MaxAge:-1})
+	http.SetCookie(w,&http.Cookie{Name:"eznas_session",Value:"",Path:"/",HttpOnly:true,SameSite:http.SameSiteStrictMode,Secure:requestIsSecure(r),MaxAge:-1})
 	writeJSON(w,200,map[string]bool{"ok":true})
 }
 func apiHandler(w http.ResponseWriter,r *http.Request) {
@@ -373,6 +408,12 @@ func apiHandler(w http.ResponseWriter,r *http.Request) {
 		methodNotAllowed(w)
 	case "/api/backups/download":
 		if r.Method != http.MethodGet { methodNotAllowed(w); return }; downloadBackup(w,r)
+	case "/api/shares":
+		if r.Method == http.MethodGet { listShares(w,r); return }
+		if r.Method == http.MethodPost { createShare(w,r); return }
+		methodNotAllowed(w)
+	case "/api/shares/revoke":
+		if r.Method != http.MethodPost { methodNotAllowed(w); return }; revokeShare(w,r)
 	case "/api/search":
 		if r.Method!=http.MethodGet { methodNotAllowed(w); return }; searchFiles(w,r)
 	case "/api/storage":
@@ -423,6 +464,14 @@ func listFiles(w http.ResponseWriter,r *http.Request) {
 	writeJSON(w,200,map[string]any{"path":r.URL.Query().Get("path"),"items":out})
 }
 func uploadFile(w http.ResponseWriter,r *http.Request) {
+	select {
+	case uploadSlots <- struct{}{}:
+		defer func() { <-uploadSlots }()
+	default:
+		w.Header().Set("Retry-After", "5")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the NAS is handling other uploads; retry in a few seconds"})
+		return
+	}
 	r.Body=http.MaxBytesReader(w,r.Body,maxUploadBytes+(1<<20))
 	if err:=r.ParseMultipartForm(32<<20);err!=nil { writeJSON(w,400,map[string]string{"error":"upload too large or invalid multipart form"});return }
 	dir,err:=safePath(r.FormValue("path"));if err!=nil{writeJSON(w,400,map[string]string{"error":err.Error()});return}
@@ -545,13 +594,21 @@ func listBackups(w http.ResponseWriter,r *http.Request) {
 	sort.Slice(out,func(i,j int)bool{return out[i].Created.After(out[j].Created)});writeJSON(w,200,map[string]any{"items":out})
 }
 func createBackup(w http.ResponseWriter,r *http.Request) {
+	select {
+	case backupSlots <- struct{}{}:
+		defer func() { <-backupSlots }()
+	default:
+		w.Header().Set("Retry-After", "10")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "a backup is already running; retry shortly"})
+		return
+	}
 	cfgMu.RLock();root,dir:=cfg.Storage,cfg.BackupDir;cfgMu.RUnlock()
 	relBackup, relErr := filepath.Rel(root, dir)
 	if relErr == nil && relBackup != ".." && !strings.HasPrefix(relBackup, ".."+string(filepath.Separator)) {
 		writeJSON(w,400,map[string]string{"error":"backup_dir must be outside the storage directory to prevent recursive backups"}); return
 	}
 	if err:=os.MkdirAll(dir,0700);err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup directory"});return}
-	name:="eznas-backup-"+time.Now().Format("20060102-150405")+".zip";target:=filepath.Join(dir,name);tmp:=target+".tmp"
+	name:="eznas-backup-"+time.Now().UTC().Format("20060102-150405.000000000")+"Z.zip";target:=filepath.Join(dir,name);tmp:=target+".tmp"
 	f,err:=os.OpenFile(tmp,os.O_CREATE|os.O_EXCL|os.O_WRONLY,0600);if err!=nil{writeJSON(w,500,map[string]string{"error":"cannot create backup file"});return}
 	zw:=zip.NewWriter(f)
 	err=filepath.WalkDir(root,func(p string,d fs.DirEntry,walkErr error)error{
@@ -565,7 +622,11 @@ func createBackup(w http.ResponseWriter,r *http.Request) {
 		if fi.IsDir(){return nil}
 		in,er:=os.Open(p);if er!=nil{return er};_,copyErr:=io.Copy(writer,in);closeErr:=in.Close();if copyErr!=nil{return copyErr};return closeErr
 	})
-	closeZipErr:=zw.Close();closeFileErr:=f.Close();if err==nil{err=closeZipErr};if err==nil{err=closeFileErr}
+	closeZipErr:=zw.Close()
+	if err==nil { err=closeZipErr }
+	if err==nil { err=f.Sync() }
+	closeFileErr:=f.Close()
+	if err==nil { err=closeFileErr }
 	if err!=nil{_ = os.Remove(tmp);writeJSON(w,500,map[string]string{"error":"backup failed; check available disk space and permissions"});return}
 	if err=os.Rename(tmp,target);err!=nil{_ = os.Remove(tmp);writeJSON(w,500,map[string]string{"error":"cannot finalize backup"});return}
 	fi,err:=os.Stat(target);if err!=nil{writeJSON(w,500,map[string]string{"error":"backup created but metadata could not be read"});return}
