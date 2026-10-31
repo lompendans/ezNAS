@@ -5,6 +5,11 @@ import (
 	"crypto/subtle"
 	"crypto/sha256"
 	"crypto/hmac"
+	"crypto/x509"
+	"crypto/rsa"
+	"crypto/x509/pkix"
+	"archive/zip"
+	"encoding/pem"
 	"context"
 	"net/url"
 	"encoding/base64"
@@ -44,6 +49,9 @@ type Config struct {
 	Storage string `json:"storage"`
 	PasswordHash string `json:"password_hash,omitempty"`
 	PasswordSalt string `json:"password_salt,omitempty"`
+	TLSCert string `json:"tls_cert,omitempty"`
+	TLSKey string `json:"tls_key,omitempty"`
+	BackupDir string `json:"backup_dir,omitempty"`
 }
 
 type FileInfo struct {
@@ -77,6 +85,7 @@ func main() {
 		case "status": checkStatus(); return
 		case "stop": stopServer(); return
 		case "update": runUpdate(); return
+		case "tls": if len(args)>1 && args[1]=="generate" { generateTLSCertificate(); return }; fmt.Println("Usage: eznas tls generate"); return
 		case "password":
 			if len(args) > 1 && args[1] == "set" { setPassword(); return }
 			fmt.Println("Usage: eznas password set"); os.Exit(2)
@@ -137,6 +146,10 @@ func loadConfig() error {
 	if cfg.Host == "" { cfg.Host = "0.0.0.0" }
 	if cfg.Port < 1 || cfg.Port > 65535 { return fmt.Errorf("invalid port in config") }
 	if cfg.Storage == "" { return fmt.Errorf("storage path cannot be empty") }
+	if cfg.BackupDir == "" { cfg.BackupDir = filepath.Join(filepath.Dir(configLocation()), "backups") }
+	if cfg.TLSCert != "" { cfg.TLSCert, _ = filepath.Abs(cfg.TLSCert) }
+	if cfg.TLSKey != "" { cfg.TLSKey, _ = filepath.Abs(cfg.TLSKey) }
+	if cfg.BackupDir != "" { cfg.BackupDir, _ = filepath.Abs(cfg.BackupDir) }
 	abs, err := filepath.Abs(cfg.Storage); if err != nil { return err }; cfg.Storage = abs
 	return nil
 }
@@ -161,6 +174,7 @@ func printHelp() {
 	fmt.Println("  eznas storage      Show storage path and free space")
 	fmt.Println("  eznas password set Set or change the required password")
 	fmt.Println("  eznas update       Download and verify the latest stable release")
+	fmt.Println("  eznas tls generate Generate a local self-signed HTTPS certificate")
 	fmt.Println("  eznas version      Print version")
 	fmt.Println("  eznas help         Show this help")
 }
